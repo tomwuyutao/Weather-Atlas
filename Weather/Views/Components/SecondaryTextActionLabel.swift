@@ -13,34 +13,31 @@ import SwiftUI
 /// A quiet 44-point action label for links and non-primary mutations beneath
 /// report content. The caller supplies the `Button` or `NavigationLink`.
 struct SecondaryTextActionLabel: View {
-    let title: LocalizedStringKey
-    let systemImage: String
-    /// Navigation links retain their conventional trailing chevron, while
-    /// place mutations use a leading icon that reads as part of the action.
-    var iconIsLeading = false
+  let title: LocalizedStringKey
+  let systemImage: String
+  /// Navigation links retain their conventional trailing chevron, while
+  /// place mutations use a leading icon that reads as part of the action.
+  var iconIsLeading = false
 
-    @Environment(\.appTheme) private var theme
+  @Environment(\.appTheme) private var theme
 
-    var body: some View {
-        HStack(spacing: 5) {
-            if iconIsLeading {
-                actionIcon
-            }
+  var body: some View {
+    HStack(spacing: 5) {
+      if iconIsLeading {
+        (Image(systemName: systemImage)
+          .font(.body.weight(.regular)))
+      }
 
-            Text(title)
+      Text(title)
 
-            if !iconIsLeading {
-                actionIcon
-            }
-        }
-        .font(.body.weight(.regular))
-        .foregroundStyle(theme.colors.secondaryText)
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
+      if !iconIsLeading {
+        (Image(systemName: systemImage)
+          .font(.body.weight(.regular)))
+      }
     }
-
-    private var actionIcon: some View {
-        Image(systemName: systemImage)
-            .font(.body.weight(.regular))
-    }
+    .font(.body.weight(.regular))
+    .foregroundStyle(theme.colors.secondaryText)
+    .frame(minHeight: 44)
+    .contentShape(Rectangle())
+  }
 }

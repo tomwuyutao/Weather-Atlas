@@ -14,388 +14,382 @@ import SwiftUI
 /// The app shell owns the tab's `NavigationStack`; this view contributes
 /// value-based links and native navigation-bar content to that stack.
 struct ManageSavedPlaces: View {
-    // MARK: - Parent-Supplied Store and Navigation
+  // MARK: - Parent-Supplied Store and Navigation
 
-    /// The store owns persistence. This screen creates only transient UI state,
-    /// then asks the shared store to perform mutations.
-    let placesStore: SavedPlacesStore
+  /// The store owns persistence. This screen creates only transient UI state,
+  /// then asks the shared store to perform mutations.
+  let placesStore: SavedPlacesStore
 
-    @Bindable var router: AppNavigation
+  @Bindable var router: AppNavigation
 
-    @Environment(\.appTheme) private var theme
-    /// App-selected locale used for mutation error recovery copy.
-    @Environment(\.locale) private var locale
+  @Environment(\.appTheme) private var theme
+  /// App-selected locale used for mutation error recovery copy.
+  @Environment(\.locale) private var locale
 
-    // MARK: - View State
+  // MARK: - View State
 
-    @State private var deleteAllIsPresented = false
-    @State private var renamingPlace: SavedPlace?
-    @State private var renameDraft = ""
-    @State private var editMode: EditMode = .inactive
-    @State private var presentedError: PlacesUIError?
+  @State private var deleteAllIsPresented = false
+  @State private var renamingPlace: SavedPlace?
+  @State private var renameDraft = ""
+  @State private var editMode: EditMode = .inactive
+  @State private var presentedError: PlacesUIError?
 
-    // MARK: - Derived Library Data
+  // MARK: - Derived Library Data
 
-    private var savedPlaces: [SavedPlace] { placesStore.allPlaces }
+  private var savedPlaces: [SavedPlace] { placesStore.allPlaces }
 
-    // MARK: - Screen Lifecycle and Navigation
+  // MARK: - Screen Lifecycle and Navigation
 
-    var body: some View {
-        placesContent
-            .weatherContentColumn(standardMaximumWidth: .infinity)
-            .environment(\.editMode, $editMode)
-            .weatherScreenBackground()
-            .navigationTitle("Manage Saved Places")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: toggleEditMode) {
-                        Image(systemName: editMode.isEditing ? "checkmark" : "pencil")
-                    }
+  var body: some View {
+    placesContent
+      .weatherContentColumn(standardMaximumWidth: .infinity)
+      .environment(\.editMode, $editMode)
+      .weatherScreenBackground()
+      .navigationTitle("Manage Saved Places")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button {
+            editMode = editMode.isEditing ? .inactive : .active
+          } label: {
+            Image(systemName: editMode.isEditing ? "checkmark" : "pencil")
+          }
 
-                    .disabled(savedPlaces.isEmpty)
-                }
-            }
-            .confirmationDialog(
-                "Delete All Saved Places?",
-                isPresented: $deleteAllIsPresented
-            ) {
-                Button("Delete All", role: .destructive) {
-                    deleteAllPlaces()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This removes every saved place. This action cannot be undone.")
-            }
-            .alert(
-                "Unable to Update Places",
-                isPresented: errorIsPresented,
-                presenting: presentedError
-            ) { _ in
-                Button("OK") {
-                    presentedError = nil
-                }
-            } message: { error in
-                Text(error.message)
-            }
-            .alert(
-                "Rename Saved Place",
-                isPresented: renameIsPresented,
-                presenting: renamingPlace
-            ) { _ in
-                TextField("Name", text: $renameDraft)
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled()
-
-                Button("Cancel", role: .cancel) {
-                    endRename()
-                }
-                Button("Save") {
-                    saveRename()
-                }
-                .disabled(!canSaveRename)
-            } message: { place in
-                Text("Leave this blank to use \(place.city.displayName).")
-            }
-    }
-
-    // MARK: - List States and Row Construction
-
-    /// Selects the single whole-screen state: persistence failure, empty
-    /// library, or the interactive list.
-    @ViewBuilder
-    private var placesContent: some View {
-        if placesStore.loadErrorDescription != nil {
-            PlacesLibraryUnavailableView(
-                retry: placesStore.retryLoading
-            )
-        } else if savedPlaces.isEmpty {
-            PlacesEmptyView(
-                searchPlaces: {
-                    // Do not restore a previous Search detail after the user
-                    // reaches this empty-library call to action.
-                    router.showSearchRoot()
-                }
-            )
-        } else {
-            placesList
+          .disabled(savedPlaces.isEmpty)
         }
-    }
-
-    /// Saved places retain their persistent order. Edit mode converts each row
-    /// into a direct rename control while swipe deletion stays native.
-    private var placesList: some View {
-        List {
-            Section {
-                ForEach(savedPlaces) { place in
-                    placeRow(place)
-                }
-                .onDelete(perform: requestDeletion)
-            }
-            .listRowBackground(theme.colors.settingsRowFill)
-
-            // Keep the bulk destructive action alongside the active editing
-            // controls, rather than showing it during ordinary browsing.
-            if editMode.isEditing {
-                Section {
-                    Button(role: .destructive) {
-                        deleteAllIsPresented = true
-                    } label: {
-                        Label("Delete All", systemImage: "trash")
-                            .foregroundStyle(theme.colors.destructive)
-                    }
-                    .tint(theme.colors.destructive)
-                }
-                .listRowBackground(theme.colors.settingsRowFill)
-            }
+      }
+      .confirmationDialog(
+        "Delete All Saved Places?",
+        isPresented: $deleteAllIsPresented
+      ) {
+        Button("Delete All", role: .destructive) {
+          deleteAllPlaces()
         }
-        .listStyle(.insetGrouped)
-        .weatherScrollableBackground()
-    }
-
-    @ViewBuilder
-    private func placeRow(_ place: SavedPlace) -> some View {
-        if editMode.isEditing {
-            HStack {
-                CompactSavedPlaceRow(place: place)
-
-                Spacer(minLength: 12)
-
-                Button {
-                    beginRename(place)
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(theme.colors.primaryText)
-                        // Keep this label's height intrinsic. A 44-point-tall
-                        // label sits inside List's normal vertical insets and
-                        // makes editing rows visibly taller than browsing rows.
-                        .frame(width: 32)
-                }
-                .buttonStyle(.borderless)
-
-            }
-            .contextMenu { placeContextMenu(place) }
-        } else {
-            NavigationLink(value: AppRoute.place(id: place.id)) {
-                CompactSavedPlaceRow(place: place)
-            }
-            .contextMenu { placeContextMenu(place) }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("This removes every saved place. This action cannot be undone.")
+      }
+      .alert(
+        "Unable to Update Places",
+        isPresented: errorIsPresented,
+        presenting: presentedError
+      ) { _ in
+        Button("OK") {
+          presentedError = nil
         }
-    }
+      } message: { error in
+        Text(error.message)
+      }
+      .alert(
+        "Rename Saved Place",
+        isPresented: renameIsPresented,
+        presenting: renamingPlace
+      ) { _ in
+        TextField("Name", text: $renameDraft)
+          .textInputAutocapitalization(.words)
+          .autocorrectionDisabled()
 
-    // MARK: - User Actions and Bindings
-
-    private var errorIsPresented: Binding<Bool> {
-        Binding(
-            get: { presentedError != nil },
-            set: { isPresented in
-                if !isPresented {
-                    presentedError = nil
-                }
-            }
-        )
-    }
-
-    private var renameIsPresented: Binding<Bool> {
-        Binding(
-            get: { renamingPlace != nil },
-            set: { isPresented in
-                if !isPresented {
-                    endRename()
-                }
-            }
-        )
-    }
-
-    private var proposedCustomName: String? {
-        SavedPlace.normalizedCustomName(renameDraft)
-    }
-
-    private var renameDraftIsValid: Bool {
-        guard let proposedCustomName else { return true }
-        return PlacesLibraryValidator.isValidUserFacingName(
-            proposedCustomName,
-            maximumLength: PlacesLibraryValidator.maximumPlaceNameLength
-        )
-    }
-
-    private var canSaveRename: Bool {
-        guard let renamingPlace else { return false }
-        return renameDraftIsValid
-            && proposedCustomName != SavedPlace.normalizedCustomName(
-                renamingPlace.customName
-            )
-    }
-
-    private func beginRename(_ place: SavedPlace) {
-        renameDraft = place.customName ?? ""
-        renamingPlace = place
-    }
-
-    private func endRename() {
-        renamingPlace = nil
-        renameDraft = ""
-    }
-
-    private func saveRename() {
-        guard let renamingPlace, canSaveRename else { return }
-        do {
-            try placesStore.setCustomName(
-                id: renamingPlace.id,
-                customName: proposedCustomName
-            )
-            endRename()
-        } catch {
-            endRename()
-            present(error)
+        Button("Cancel", role: .cancel) {
+          renamingPlace = nil
+          renameDraft = ""
         }
-    }
-
-    private func deleteAllPlaces() {
-        do {
-            try placesStore.resetToEmptyLibrary()
-            editMode = .inactive
-        } catch {
-            present(error)
+        Button("Save") {
+          saveRename()
         }
-    }
+        .disabled(!canSaveRename)
+      } message: { place in
+        Text("Leave this blank to use \(place.city.displayName).")
+      }
+  }
 
-    private func toggleEditMode() {
-        editMode = editMode.isEditing ? .inactive : .active
-    }
+  // MARK: - List States and Row Construction
 
-    private func requestDeletion(_ offsets: IndexSet) {
-        let placeIDs = offsets.compactMap { offset in
-            savedPlaces.indices.contains(offset) ? savedPlaces[offset].id : nil
+  /// Selects the single whole-screen state: persistence failure, empty
+  /// library, or the interactive list.
+  @ViewBuilder
+  private var placesContent: some View {
+    if placesStore.loadErrorDescription != nil {
+      PlacesLibraryUnavailableView(
+        retry: placesStore.retryLoading
+      )
+    } else if savedPlaces.isEmpty {
+      PlacesEmptyView(
+        searchPlaces: {
+          // Do not restore a previous Search detail after the user
+          // reaches this empty-library call to action.
+          router.searchPath = []
+          router.selectedTab = .search
         }
-        do {
-            for placeID in placeIDs {
-                try placesStore.deletePlace(id: placeID)
-            }
-        } catch {
-            present(error)
-        }
-        leaveEditModeIfLibraryIsEmpty()
+      )
+    } else {
+      placesList
     }
+  }
 
-    private func deletePlace(_ place: SavedPlace) {
-        do {
-            try placesStore.deletePlace(id: place.id)
-        } catch {
-            present(error)
+  /// Saved places retain their persistent order. Edit mode converts each row
+  /// into a direct rename control while swipe deletion stays native.
+  private var placesList: some View {
+    List {
+      Section {
+        ForEach(savedPlaces) { place in
+          placeRow(place)
         }
-        leaveEditModeIfLibraryIsEmpty()
-    }
+        .onDelete(perform: requestDeletion)
+      }
+      .listRowBackground(theme.colors.settingsRowFill)
 
-    /// An empty library has no editable rows. Returning to the ordinary state
-    /// keeps a later newly added place from inheriting stale edit controls.
-    private func leaveEditModeIfLibraryIsEmpty() {
-        guard savedPlaces.isEmpty else { return }
-        editMode = .inactive
-    }
-
-    @ViewBuilder
-    private func placeContextMenu(_ place: SavedPlace) -> some View {
-        Button("Rename", systemImage: "pencil") {
-            beginRename(place)
+      // Keep the bulk destructive action alongside the active editing
+      // controls, rather than showing it during ordinary browsing.
+      if editMode.isEditing {
+        Section {
+          Button(role: .destructive) {
+            deleteAllIsPresented = true
+          } label: {
+            Label("Delete All", systemImage: "trash")
+              .foregroundStyle(theme.colors.destructive)
+          }
+          .tint(theme.colors.destructive)
         }
+        .listRowBackground(theme.colors.settingsRowFill)
+      }
+    }
+    .listStyle(.insetGrouped)
+    .weatherScrollableBackground()
+  }
 
-        Button(role: .destructive) {
-            deletePlace(place)
+  @ViewBuilder
+  private func placeRow(_ place: SavedPlace) -> some View {
+    if editMode.isEditing {
+      HStack {
+        CompactSavedPlaceRow(place: place)
+
+        Spacer(minLength: 12)
+
+        Button {
+          renameDraft = place.customName ?? ""
+          renamingPlace = place
         } label: {
-            Label("Delete", systemImage: "trash")
-                .foregroundStyle(theme.colors.destructive)
+          Image(systemName: "pencil")
+            .font(.body.weight(.medium))
+            .foregroundStyle(theme.colors.primaryText)
+            // Keep this label's height intrinsic. A 44-point-tall
+            // label sits inside List's normal vertical insets and
+            // makes editing rows visibly taller than browsing rows.
+            .frame(width: 32)
         }
-        .tint(theme.colors.destructive)
+        .buttonStyle(.borderless)
+
+      }
+      .contextMenu { placeContextMenu(place) }
+    } else {
+      NavigationLink(value: AppRoute.place(id: place.id)) {
+        CompactSavedPlaceRow(place: place)
+      }
+      .contextMenu { placeContextMenu(place) }
+    }
+  }
+
+  // MARK: - User Actions and Bindings
+
+  private var errorIsPresented: Binding<Bool> {
+    Binding(
+      get: { presentedError != nil },
+      set: { isPresented in
+        if !isPresented {
+          presentedError = nil
+        }
+      }
+    )
+  }
+
+  private var renameIsPresented: Binding<Bool> {
+    Binding(
+      get: { renamingPlace != nil },
+      set: { isPresented in
+        if !isPresented {
+          renamingPlace = nil
+          renameDraft = ""
+        }
+      }
+    )
+  }
+
+  private var renameDraftIsValid: Bool {
+    guard
+      let proposedCustomName = SavedPlace.normalizedCustomName(
+        renameDraft
+      )
+    else { return true }
+    return PlacesLibraryValidator.isValidUserFacingName(
+      proposedCustomName,
+      maximumLength: PlacesLibraryValidator.maximumPlaceNameLength
+    )
+  }
+
+  private var canSaveRename: Bool {
+    guard let renamingPlace else { return false }
+    return renameDraftIsValid
+      && SavedPlace.normalizedCustomName(renameDraft)
+        != SavedPlace.normalizedCustomName(
+          renamingPlace.customName
+        )
+  }
+
+  private func saveRename() {
+    guard let place = renamingPlace, canSaveRename else { return }
+    do {
+      try placesStore.setCustomName(
+        id: place.id,
+        customName: SavedPlace.normalizedCustomName(renameDraft)
+      )
+      renamingPlace = nil
+      renameDraft = ""
+    } catch {
+      renamingPlace = nil
+      renameDraft = ""
+      presentedError = PlacesUIError(
+        message: localizedPlacesErrorDescription(error, locale: locale)
+      )
+    }
+  }
+
+  private func deleteAllPlaces() {
+    do {
+      try placesStore.persist(.empty)
+      placesStore.pendingSavedPlaceNotifications.removeAll()
+      editMode = .inactive
+    } catch {
+      presentedError = PlacesUIError(
+        message: localizedPlacesErrorDescription(error, locale: locale)
+      )
+    }
+  }
+
+  private func requestDeletion(_ offsets: IndexSet) {
+    let placeIDs = offsets.compactMap { offset in
+      savedPlaces.indices.contains(offset) ? savedPlaces[offset].id : nil
+    }
+    do {
+      for placeID in placeIDs {
+        try placesStore.deletePlace(id: placeID)
+      }
+    } catch {
+      presentedError = PlacesUIError(
+        message: localizedPlacesErrorDescription(error, locale: locale)
+      )
+    }
+    if savedPlaces.isEmpty {
+      editMode = .inactive
+    }
+  }
+
+  private func deletePlace(_ place: SavedPlace) {
+    do {
+      try placesStore.deletePlace(id: place.id)
+    } catch {
+      presentedError = PlacesUIError(
+        message: localizedPlacesErrorDescription(error, locale: locale)
+      )
+    }
+    if savedPlaces.isEmpty {
+      editMode = .inactive
+    }
+  }
+
+  @ViewBuilder
+  private func placeContextMenu(_ place: SavedPlace) -> some View {
+    Button("Rename", systemImage: "pencil") {
+      renameDraft = place.customName ?? ""
+      renamingPlace = place
     }
 
-    private func present(_ error: Error) {
-        presentedError = PlacesUIError(
-            message: localizedPlacesErrorDescription(error, locale: locale)
-        )
+    Button(role: .destructive) {
+      deletePlace(place)
+    } label: {
+      Label("Delete", systemImage: "trash")
+        .foregroundStyle(theme.colors.destructive)
     }
+    .tint(theme.colors.destructive)
+  }
+
 }
 
 #if DEBUG
 
-// MARK: - Preview
+  // MARK: - Preview
 
-#Preview("Manage Saved Places") {
+  #Preview("Manage Saved Places") {
     ManageSavedPlacesRoutePreview()
-}
+  }
 #endif
 
 // MARK: - Supporting Views and Values
 
 /// Converts an error message into an `alert(item:)`-compatible value.
 private struct PlacesUIError: Identifiable {
-    let id = UUID()
-    let message: String
+  let id = UUID()
+  let message: String
 }
 
 /// A saved-place label always uses the chosen display name as its sole title.
 private struct CompactSavedPlaceRow: View {
-    let place: SavedPlace
+  let place: SavedPlace
 
-    @Environment(\.appTheme) private var theme
+  @Environment(\.appTheme) private var theme
 
-    var body: some View {
-        VStack(alignment: .leading) {
-            Text(place.displayName)
-                .foregroundStyle(theme.colors.primaryText)
-        }
+  var body: some View {
+    VStack(alignment: .leading) {
+      Text(place.displayName)
+        .foregroundStyle(theme.colors.primaryText)
     }
+  }
 }
 
 /// First-run state directing users toward the only way to create saved places.
 private struct PlacesEmptyView: View {
-    let searchPlaces: () -> Void
-    @Environment(\.appTheme) private var theme
-    @Environment(\.locale) private var locale
+  let searchPlaces: () -> Void
+  @Environment(\.appTheme) private var theme
+  @Environment(\.locale) private var locale
 
-    private var title: String {
-        localizedString("No Places Yet", locale: locale)
-    }
+  var body: some View {
+    ContentUnavailableView {
+      Label((localizedString("No Places Yet", locale: locale)), systemImage: "mappin.and.ellipse")
+    } description: {
+      Text(
+        ({ () -> String in
 
-    private var description: String {
-        return localizedString(
+          return localizedString(
             "Save cities you care about to compare their weather in one place.",
             locale: locale
-        )
+          )
+        }())
+      )
+      .padding(.top, 12)
+    } actions: {
+      Button(action: searchPlaces) {
+        Label("Search for a Place", systemImage: "magnifyingglass")
+          .font(.body.weight(.medium))
+          .foregroundStyle(theme.colors.primaryText)
+          .frame(minHeight: 44)
+      }
+      .weatherGlassActionStyle()
     }
-
-    var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: "mappin.and.ellipse")
-        } description: {
-            Text(description)
-                .padding(.top, 12)
-        } actions: {
-            Button(action: searchPlaces) {
-                Label("Search for a Place", systemImage: "magnifyingglass")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(minHeight: 44)
-            }
-            .weatherGlassActionStyle()
-        }
-    }
+  }
 }
 
 /// Persistence failed to load, which is distinct from a legitimately empty
 /// library and therefore offers a retry rather than a search call to action.
 private struct PlacesLibraryUnavailableView: View {
-    let retry: () -> Void
+  let retry: () -> Void
 
-    var body: some View {
-        ContentUnavailableView {
-            Label("Places Unavailable", systemImage: "exclamationmark.triangle")
-        } description: {
-            Text("Saved Places could not be loaded. Try again.")
-        } actions: {
-            Button("Try Again", systemImage: "arrow.clockwise", action: retry)
-                .weatherGlassActionStyle()
-        }
+  var body: some View {
+    ContentUnavailableView {
+      Label("Places Unavailable", systemImage: "exclamationmark.triangle")
+    } description: {
+      Text("Saved Places could not be loaded. Try again.")
+    } actions: {
+      Button("Try Again", systemImage: "arrow.clockwise", action: retry)
+        .weatherGlassActionStyle()
     }
+  }
 }

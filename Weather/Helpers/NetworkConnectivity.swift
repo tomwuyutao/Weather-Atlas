@@ -15,9 +15,9 @@ import Observation
 /// The monitor has an explicit initial phase so callers never mistake an
 /// unevaluated path for a confirmed internet connection.
 nonisolated enum NetworkConnectivityStatus: Equatable, Sendable {
-    case evaluating
-    case available
-    case offline
+  case evaluating
+  case available
+  case offline
 }
 
 /// App-wide network reachability state backed by Apple's `NWPathMonitor`.
@@ -28,47 +28,35 @@ nonisolated enum NetworkConnectivityStatus: Equatable, Sendable {
 @MainActor
 @Observable
 final class NetworkConnectivity {
-    /// Starts unevaluated and changes after the monitor's first path callback.
-    private(set) var status: NetworkConnectivityStatus = .evaluating
-    /// Whether iOS has confirmed that no internet-capable path is available.
-    var isOffline: Bool { status == .offline }
-    /// Whether the monitor has delivered at least one authoritative path result.
-    var hasEvaluatedPath: Bool { status != .evaluating }
-    /// Lets the person hide the advisory banner for the current offline episode.
-    private(set) var isOfflineBannerDismissed = false
+  /// Starts unevaluated and changes after the monitor's first path callback.
+  private(set) var status: NetworkConnectivityStatus = .evaluating
+  /// Whether iOS has confirmed that no internet-capable path is available.
+  var isOffline: Bool { status == .offline }
+  /// Lets the person hide the advisory banner for the current offline episode.
+  var isOfflineBannerDismissed = false
 
-    /// The monitor and dispatch queue are implementation details, not UI state.
-    @ObservationIgnored private let pathMonitor = NWPathMonitor()
-    @ObservationIgnored private let monitorQueue = DispatchQueue(
-        label: "WeatherAtlas.NetworkConnectivity"
-    )
+  /// The monitor and dispatch queue are implementation details, not UI state.
+  @ObservationIgnored private let pathMonitor = NWPathMonitor()
+  @ObservationIgnored private let monitorQueue = DispatchQueue(
+    label: "WeatherAtlas.NetworkConnectivity"
+  )
 
-    init() {
-        pathMonitor.pathUpdateHandler = { [weak self] path in
-            let status = path.status
-            DispatchQueue.main.async { [weak self] in
-                self?.apply(pathStatus: status)
-            }
+  init() {
+    pathMonitor.pathUpdateHandler = { [weak self] path in
+      let status = path.status
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        let previousStatus = self.status
+        self.status = status == .unsatisfied ? .offline : .available
+        if previousStatus == .offline, self.status == .available {
+          self.isOfflineBannerDismissed = false
         }
-        pathMonitor.start(queue: monitorQueue)
+      }
     }
+    pathMonitor.start(queue: monitorQueue)
+  }
 
-    deinit {
-        pathMonitor.cancel()
-    }
-
-    /// Dismisses the banner without changing the offline data policy.
-    func dismissOfflineBanner() {
-        isOfflineBannerDismissed = true
-    }
-
-    /// Applies a new path result on the main actor. A recovered path re-arms
-    /// the banner for a later, genuinely separate offline episode.
-    private func apply(pathStatus: NWPath.Status) {
-        let previousStatus = status
-        status = pathStatus == .unsatisfied ? .offline : .available
-        if previousStatus == .offline, status == .available {
-            isOfflineBannerDismissed = false
-        }
-    }
+  deinit {
+    pathMonitor.cancel()
+  }
 }

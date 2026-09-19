@@ -14,137 +14,134 @@ import SwiftUI
 /// the material and positioning; this type owns the capsule's typography,
 /// spacing, Dynamic Type behavior, and interactive hit shape.
 struct MapCapsule<Content: View>: View {
-    let content: Content
-    private let horizontalPadding: CGFloat
+  let content: Content
+  private let horizontalPadding: CGFloat
 
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    init(
-        horizontalPadding: CGFloat = MapCardLayout.compactHorizontalPadding,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.horizontalPadding = horizontalPadding
-        self.content = content()
+  init(
+    horizontalPadding: CGFloat = MapCardLayout.compactHorizontalPadding,
+    @ViewBuilder content: () -> Content
+  ) {
+    self.horizontalPadding = horizontalPadding
+    self.content = content()
+  }
+
+  var body: some View {
+    HStack(spacing: 8) {
+      content
     }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            content
-        }
-        .font(.subheadline)
-        .fontWeight(.regular)
-        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-        .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.72)
-        .allowsTightening(true)
-        .padding(.horizontal, horizontalPadding)
-        .frame(
-            minHeight: dynamicTypeSize.isAccessibilitySize
-                ? 60
-                : MapCardLayout.compactHeight
-        )
-        .contentShape(
-            RoundedRectangle(
-                cornerRadius: MapCardLayout.compactHeight / 2,
-                style: .continuous
-            )
-        )
-    }
+    .font(.subheadline)
+    .fontWeight(.regular)
+    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.72)
+    .allowsTightening(true)
+    .padding(.horizontal, horizontalPadding)
+    .frame(
+      minHeight: dynamicTypeSize.isAccessibilitySize
+        ? 60
+        : MapCardLayout.compactHeight
+    )
+    .contentShape(
+      RoundedRectangle(
+        cornerRadius: MapCardLayout.compactHeight / 2,
+        style: .continuous
+      )
+    )
+  }
 }
 
 // MARK: - Compact Actions
 
 /// Icon-only action sized for the compact Map capsule.
 struct MapCapsuleIconButton: View {
-    let title: LocalizedStringKey
-    let systemImage: String
-    private let iconOffsetTowardTrailing: CGFloat
-    let action: () -> Void
+  let title: LocalizedStringKey
+  let systemImage: String
+  private let iconOffsetTowardTrailing: CGFloat
+  let action: () -> Void
 
-    @Environment(\.layoutDirection) private var layoutDirection
+  @Environment(\.layoutDirection) private var layoutDirection
 
-    init(
-        title: LocalizedStringKey,
-        systemImage: String,
-        iconOffsetTowardTrailing: CGFloat = 0,
-        action: @escaping () -> Void
-    ) {
-        self.title = title
-        self.systemImage = systemImage
-        self.iconOffsetTowardTrailing = iconOffsetTowardTrailing
-        self.action = action
-    }
+  init(
+    title: LocalizedStringKey,
+    systemImage: String,
+    iconOffsetTowardTrailing: CGFloat = 0,
+    action: @escaping () -> Void
+  ) {
+    self.title = title
+    self.systemImage = systemImage
+    self.iconOffsetTowardTrailing = iconOffsetTowardTrailing
+    self.action = action
+  }
 
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .labelStyle(.iconOnly)
-                .offset(x: directionalIconOffset)
-        }
-        .font(.body.weight(.semibold))
-        .frame(width: 44, height: 44)
-        .contentShape(Rectangle())
-        .buttonStyle(.plain)
-    }
-
-    private var directionalIconOffset: CGFloat {
-        layoutDirection == .leftToRight
+  var body: some View {
+    Button(action: action) {
+      Label(title, systemImage: systemImage)
+        .labelStyle(.iconOnly)
+        .offset(
+          x: (layoutDirection == .leftToRight
             ? iconOffsetTowardTrailing
-            : -iconOffsetTowardTrailing
+            : -iconOffsetTowardTrailing))
     }
+    .font(.body.weight(.semibold))
+    .frame(width: 44, height: 44)
+    .contentShape(Rectangle())
+    .buttonStyle(.plain)
+  }
 }
 
 // MARK: - Search Status
 
 /// The Find Sun search lifecycle rendered in the one shared Map capsule.
 struct MapSunSearchCapsule: View {
-    enum State {
-        case finding(title: String)
-        case results(
-            title: String,
-            showResults: () -> Void,
-            clearResults: () -> Void
-        )
-    }
+  enum State {
+    case finding(title: String)
+    case results(
+      title: String,
+      showResults: () -> Void,
+      clearResults: () -> Void
+    )
+  }
 
-    let state: State
+  let state: State
 
-    var body: some View {
-        switch state {
-        case .finding(let title):
-            MapCapsule {
-                ProgressView()
-                    .controlSize(.small)
-                Text(title)
-            }
+  var body: some View {
+    switch state {
+    case .finding(let title):
+      MapCapsule {
+        ProgressView()
+          .controlSize(.small)
+        Text(title)
+      }
 
-        case .results(let title, let showResults, let clearResults):
-            MapCapsule(horizontalPadding: 0) {
-                Text(title)
-                    .layoutPriority(1)
-                    .padding(.leading, Layout.leadingInset)
+    case .results(let title, let showResults, let clearResults):
+      MapCapsule(horizontalPadding: 0) {
+        Text(title)
+          .layoutPriority(1)
+          .padding(.leading, Layout.leadingInset)
 
-                HStack(spacing: 0) {
-                    MapCapsuleIconButton(
-                        title: "Show Results",
-                        systemImage: "list.bullet",
-                        iconOffsetTowardTrailing: Layout.listIconOffsetTowardTrailing,
-                        action: showResults
-                    )
+        HStack(spacing: 0) {
+          MapCapsuleIconButton(
+            title: "Show Results",
+            systemImage: "list.bullet",
+            iconOffsetTowardTrailing: Layout.listIconOffsetTowardTrailing,
+            action: showResults
+          )
 
-                    MapCapsuleIconButton(
-                        title: "Clear Results",
-                        systemImage: "xmark",
-                        action: clearResults
-                    )
-                }
-                .padding(.trailing, Layout.trailingInset)
-            }
+          MapCapsuleIconButton(
+            title: "Clear Results",
+            systemImage: "xmark",
+            action: clearResults
+          )
         }
+        .padding(.trailing, Layout.trailingInset)
+      }
     }
+  }
 
-    private enum Layout {
-        static let leadingInset: CGFloat = 20
-        static let trailingInset: CGFloat = 4
-        static let listIconOffsetTowardTrailing: CGFloat = 8
-    }
+  private enum Layout {
+    static let leadingInset: CGFloat = 20
+    static let trailingInset: CGFloat = 4
+    static let listIconOffsetTowardTrailing: CGFloat = 8
+  }
 }
