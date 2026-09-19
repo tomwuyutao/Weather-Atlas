@@ -188,7 +188,17 @@ struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View 
 
       HStack(alignment: .top, spacing: 20) {
         VStack(spacing: 0) {
-          reportHeader(landscapeHeight: headerHeight)
+          LocationReportHeader(
+            weather: weather,
+            forecast: forecast,
+            landscapeHeight: headerHeight,
+            landscapeConditionVerticalOffset: 18
+          ) {
+            headerTitle
+          }
+          .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+            onHeaderVisibilityChange(isVisible)
+          }
           dailySunnyHoursCard
             .frame(
               maxWidth: centersDailyTimeline ? 400 : .infinity
@@ -234,7 +244,17 @@ struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View 
       }
     } else {
       LazyVStack(spacing: 14) {
-        reportHeader()
+        LocationReportHeader(
+          weather: weather,
+          forecast: forecast,
+          landscapeHeight: nil,
+          landscapeConditionVerticalOffset: 0
+        ) {
+          headerTitle
+        }
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+          onHeaderVisibilityChange(isVisible)
+        }
         dailySunnyHoursCard
           .frame(
             maxWidth: centersDailyTimeline ? 400 : .infinity
@@ -245,24 +265,23 @@ struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View 
     }
   }
 
-  private func reportHeader(landscapeHeight: CGFloat? = nil) -> some View {
-    LocationReportHeader(
-      weather: weather,
-      forecast: forecast,
-      landscapeHeight: landscapeHeight,
-      landscapeConditionVerticalOffset: landscapeHeight == nil ? 0 : 18
-    ) {
-      headerTitle
-    }
-    .onScrollVisibilityChange(threshold: 0.01) { isVisible in
-      onHeaderVisibilityChange(isVisible)
-    }
-  }
-
   @ViewBuilder
   private var reportDetails: some View {
     ForEach(sectionOrder) { section in
-      reportSection(section)
+      switch section {
+      case .tenDaySunnyHours:
+        tenDaySunnyHoursTimeline
+      case .basicWeatherData:
+        DetailMetricGrid(
+          city: weather,
+          forecast: forecast,
+          temperatureUnit: temperatureUnit,
+          usesLandscapeIPadLayout: false,
+          selectedForecastDate: $selectedDate
+        )
+      case .nearbySunnyPlaces:
+        supplementaryContent
+      }
     }
 
     // Local-time context qualifies the complete report rather than only
@@ -274,31 +293,20 @@ struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View 
         != TimeZone.autoupdatingCurrent.identifier
     {
       WeatherTimeZoneFootnote(
-        text: SunnyHoursFormatting.localTimeDisclosure(
-          placeName: placeDisplayName,
-          timeZone: weather.timeZone,
-          at: forecast.date,
-          locale: locale
-        )
+        text: {
+          let trimmedName = placeDisplayName.trimmingCharacters(
+            in: .whitespacesAndNewlines
+          )
+          let name =
+            trimmedName.isEmpty
+            ? localizedString("Place", locale: locale)
+            : trimmedName
+          return localizedString(
+            "Times shown in \(name) local time (\(SunnyHoursFormatting.utcOffsetLabel(for: weather.timeZone, at: forecast.date, locale: locale)))",
+            locale: locale
+          )
+        }()
       )
-    }
-  }
-
-  @ViewBuilder
-  private func reportSection(_ section: DetailReportSection) -> some View {
-    switch section {
-    case .tenDaySunnyHours:
-      tenDaySunnyHoursTimeline
-    case .basicWeatherData:
-      DetailMetricGrid(
-        city: weather,
-        forecast: forecast,
-        temperatureUnit: temperatureUnit,
-        usesLandscapeIPadLayout: false,
-        selectedForecastDate: $selectedDate
-      )
-    case .nearbySunnyPlaces:
-      supplementaryContent
     }
   }
 
@@ -328,7 +336,15 @@ private struct PlaceDetailNames {
       ?? ""
     title =
       savedPlace?.customName
-      ?? city?.localizedTitleDisplayName(locale: locale)
+      ?? city.map { city in
+        let trimmedTitle =
+          city.titleName?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+          ) ?? ""
+        return trimmedTitle.isEmpty
+          ? city.localizedDisplayName(locale: locale)
+          : trimmedTitle
+      }
       ?? displayName
   }
 }
@@ -361,6 +377,20 @@ struct CurrentLocationReportContent: View {
   private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
 
   var body: some View {
+    let locationCity = model.currentLocationPlaceCity
+    let savedPlace: SavedPlace? = {
+      guard let locationCity,
+        let savedID = model.placesStore.savedPlaceID(matching: locationCity)
+      else { return nil }
+      return model.placesStore.place(id: savedID)
+    }()
+    let placeNames = PlaceDetailNames(
+      city: locationCity,
+      savedPlace: savedPlace,
+      locale: locale
+    )
+    let locationName = placeNames.displayName
+    let detailTitle = placeNames.title
     let selectedForecast = locationWeather?.forecastIfAvailable(
       on: selectedDate,
       selectionCalendar: calendar
@@ -392,8 +422,21 @@ struct CurrentLocationReportContent: View {
         city: locationWeather,
         selectedDate: $selectedDate,
         isLoading: ((model.isRefreshingLocation && !networkConnectivity.isOffline)
-          || model.locationProvider.status.isActivelyLocating),
-        unavailableMessage: locationForecastUnavailableMessage,
+          || [
+            LocationProviderStatus.checkingAvailability,
+            .requestingAuthorization,
+            .locating,
+          ].contains(model.locationProvider.status)),
+        unavailableMessage: {
+          guard locationWeather == nil else { return nil }
+          if networkConnectivity.isOffline {
+            return localizedString(
+              "Weather is temporarily unavailable.",
+              locale: locale
+            )
+          }
+          return model.locationError
+        }(),
         retry: nil
       ),
       temperatureUnit: (TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault),
@@ -407,7 +450,35 @@ struct CurrentLocationReportContent: View {
         showsLargeTitle = isVisible
       },
       headerTitle: {
-        placeActionsMenu
+        PlaceDetailActionsMenu(
+          title: navigationTitle,
+          isSaved: savedPlace != nil,
+          canUsePlace: locationCity != nil,
+          viewOnMap: viewOnMap,
+          savePlace: {
+            guard let locationCity else { return }
+            do {
+              _ = try model.placesStore.savePlace(locationCity)
+            } catch {
+              mutationError = PlaceDetailMutationError(
+                message: localizedPlacesErrorDescription(error, locale: locale)
+              )
+            }
+          },
+          removePlace: {
+            guard let savedPlace else { return }
+            do {
+              try model.placesStore.deletePlace(id: savedPlace.id)
+            } catch {
+              mutationError = PlaceDetailMutationError(
+                message: localizedPlacesErrorDescription(error, locale: locale)
+              )
+            }
+          },
+          customizeDetailView: {
+            presentedSheet = .customize
+          }
+        )
       }
     ) {
       NearbySunnyPlacesSection(
@@ -436,9 +507,11 @@ struct CurrentLocationReportContent: View {
       )
     }
     .scrollIndicators(.hidden)
-    .weatherConditionScreenBackground(
-      for: screenColorSource.tone,
-      symbolName: screenColorSource.symbolName
+    .modifier(
+      WeatherConditionScreenBackgroundModifier(
+        tone: screenColorSource.tone,
+        symbolName: screenColorSource.symbolName
+      )
     )
     .navigationTitle(navigationTitle)
     .navigationBarTitleDisplayMode(.inline)
@@ -473,12 +546,43 @@ struct CurrentLocationReportContent: View {
         )
       }
     }
-    .reportingMissingData(
-      metadataMissingDataReport,
-      recoveryKey: "location-metadata:\(metadataRecoveryKey)",
-      retrying: {
-        await model.locationProvider.retryMetadataResolution()
-      }
+    .modifier(
+      MissingDataAlertReportingModifier(
+        report: {
+          guard locationName.isEmpty,
+            model.locationProvider.status == .readyWithoutMetadata
+          else {
+            return nil
+          }
+          let recoveryKey =
+            model.locationProvider.coordinate.map {
+              String(
+                format: "%.6f,%.6f",
+                $0.latitude,
+                $0.longitude
+              )
+            } ?? "unavailable"
+          return MissingDataAlertReport(
+            key: "your-location-metadata:\(recoveryKey)",
+            title: localizedString("Data Missing", locale: locale),
+            message: weatherDataIssueMessage(
+              .unresolvedPlace(),
+              cityName: localizedString("the current location", locale: locale),
+              locale: locale
+            )
+          )
+        }(),
+        recoveryKey: ({ () -> String in
+          let coordinateKey =
+            model.locationProvider.coordinate.map {
+              String(format: "%.6f,%.6f", $0.latitude, $0.longitude)
+            } ?? "unavailable"
+          return "location-metadata:\(coordinateKey)"
+        }()),
+        retry: {
+          await model.locationProvider.retryMetadataResolution()
+        }
+      )
     )
     // A legacy current-location row can have been saved before the more
     // precise locality arrived. Repair only that exact transient UUID;
@@ -497,7 +601,14 @@ struct CurrentLocationReportContent: View {
     }
     .alert(
       "Places",
-      isPresented: showsMutationError,
+      isPresented: (Binding(
+        get: { mutationError != nil },
+        set: { isPresented in
+          if !isPresented {
+            mutationError = nil
+          }
+        }
+      )),
       presenting: mutationError
     ) { _ in
       Button("OK") {
@@ -538,54 +649,21 @@ struct CurrentLocationReportContent: View {
     return dates.sorted()
   }
 
-  /// Weather supplies the most recently resolved current-location city. A
-  /// configured home location remains usable while its weather is loading.
-  private var locationCity: City? {
-    model.currentLocationPlaceCity
-  }
-
-  private var savedPlace: SavedPlace? {
-    guard let locationCity,
-      let savedID = model.placesStore.savedPlaceID(
-        matching: locationCity
-      )
-    else {
-      return nil
-    }
-    return model.placesStore.place(id: savedID)
-  }
-
-  private var locationName: String {
-    (PlaceDetailNames(
-      city: locationCity,
-      savedPlace: savedPlace,
-      locale: locale
-    )).displayName
-  }
-
-  private var detailTitle: String {
-    (PlaceDetailNames(
-      city: locationCity,
-      savedPlace: savedPlace,
-      locale: locale
-    )).title
-  }
-
-  private var locationForecastUnavailableMessage: String? {
-    guard locationWeather == nil else { return nil }
-    if networkConnectivity.isOffline {
-      return localizedString(
-        "Weather is temporarily unavailable.",
-        locale: locale
-      )
-    }
-    return model.locationError
-  }
-
   /// Prefer the resolved locality, while retaining a meaningful label during
   /// the short interval before reverse geocoding finishes.
   private var navigationTitle: String {
-    let trimmedName = detailTitle.trimmingCharacters(
+    let locationCity = model.currentLocationPlaceCity
+    let savedPlace: SavedPlace? = {
+      guard let locationCity,
+        let savedID = model.placesStore.savedPlaceID(matching: locationCity)
+      else { return nil }
+      return model.placesStore.place(id: savedID)
+    }()
+    let trimmedName = PlaceDetailNames(
+      city: locationCity,
+      savedPlace: savedPlace,
+      locale: locale
+    ).title.trimmingCharacters(
       in: .whitespacesAndNewlines
     )
     if !trimmedName.isEmpty {
@@ -597,85 +675,8 @@ struct CurrentLocationReportContent: View {
     )
   }
 
-  private var metadataRecoveryKey: String {
-    guard let coordinate = model.locationProvider.coordinate else {
-      return "unavailable"
-    }
-    return String(
-      format: "%.6f,%.6f",
-      coordinate.latitude,
-      coordinate.longitude
-    )
-  }
-
-  private var metadataMissingDataReport: MissingDataAlertReport? {
-    guard locationName.isEmpty,
-      model.locationProvider.status == .readyWithoutMetadata
-    else {
-      return nil
-    }
-    return MissingDataAlertReport(
-      key: "your-location-metadata:\(metadataRecoveryKey)",
-      title: localizedString("Data Missing", locale: locale),
-      message: weatherDataIssueMessage(
-        .unresolvedPlace(),
-        cityName: localizedString("the current location", locale: locale),
-        locale: locale
-      )
-    )
-  }
-
-  // MARK: - Place Actions
-
-  private var placeActionsMenu: some View {
-    PlaceDetailActionsMenu(
-      title: navigationTitle,
-      isSaved: savedPlace != nil,
-      canUsePlace: locationCity != nil,
-      viewOnMap: viewOnMap,
-      savePlace: savePlace,
-      removePlace: removeSavedPlace,
-      customizeDetailView: {
-        presentedSheet = .customize
-      }
-    )
-  }
-
-  private var showsMutationError: Binding<Bool> {
-    Binding(
-      get: { mutationError != nil },
-      set: { isPresented in
-        if !isPresented {
-          mutationError = nil
-        }
-      }
-    )
-  }
-
-  private func savePlace() {
-    guard let locationCity else { return }
-    do {
-      _ = try model.placesStore.savePlace(locationCity)
-    } catch {
-      mutationError = PlaceDetailMutationError(
-        message: localizedPlacesErrorDescription(error, locale: locale)
-      )
-    }
-  }
-
-  private func removeSavedPlace() {
-    guard let savedPlace else { return }
-    do {
-      try model.placesStore.deletePlace(id: savedPlace.id)
-    } catch {
-      mutationError = PlaceDetailMutationError(
-        message: localizedPlacesErrorDescription(error, locale: locale)
-      )
-    }
-  }
-
   private func viewOnMap() {
-    guard locationCity != nil else { return }
+    guard model.currentLocationPlaceCity != nil else { return }
     router.mapPath = []
     router.selectedMapPlaceID = nil
     router.mapPreviewCity = nil
@@ -713,7 +714,28 @@ private struct NearbySunnyPlacesSection: View {
 
   var body: some View {
     NearbySunnyPlacesCard(
-      recommendations: recommendations,
+      recommendations: ({
+        switch reference {
+        case .currentLocation:
+          return model.rankedNearbyRecommendations(
+            from: model.nearbyCandidates,
+            comparedWith: model.locationWeather,
+            on: selectedDate,
+            locale: locale,
+            limit: nil
+          )
+        case .place(let city, _):
+          guard let city else { return [] }
+          guard model.placeNearbySearchOriginID == city.id else { return [] }
+          return model.rankedNearbyRecommendations(
+            from: model.placeNearbyCandidates,
+            comparedWith: model.weatherStore.weather(for: city.id),
+            on: selectedDate,
+            locale: locale,
+            limit: nil
+          )
+        }
+      })(),
       locationStatus: model.locationProvider.status,
       requiresCurrentLocation: ({ () -> Bool in
 
@@ -722,7 +744,14 @@ private struct NearbySunnyPlacesSection: View {
         }
         return requiresPhysicalLocation
       }()),
-      distanceReferenceName: distanceReferenceName,
+      distanceReferenceName: ({
+        switch reference {
+        case .currentLocation(let displayName, _):
+          return displayName
+        case .place(_, let displayName):
+          return displayName
+        }
+      })(),
       isLoading: isLoading,
       hasCompletedSearch: hasCompletedSearch,
       errorMessage: errorMessage,
@@ -733,32 +762,6 @@ private struct NearbySunnyPlacesSection: View {
   }
 
   // MARK: Search-State Selection
-
-  private var recommendations: [NearestSunnyPlaceResult] {
-    switch reference {
-    case .currentLocation:
-      return model.nearbyRecommendations(
-        on: selectedDate,
-        locale: locale
-      )
-    case .place(let city, _):
-      guard let city else { return [] }
-      return model.nearbyRecommendations(
-        around: city,
-        on: selectedDate,
-        locale: locale
-      )
-    }
-  }
-
-  private var distanceReferenceName: String? {
-    switch reference {
-    case .currentLocation(let displayName, _):
-      return displayName
-    case .place(_, let displayName):
-      return displayName
-    }
-  }
 
   private var isLoading: Bool {
     switch reference {
@@ -976,7 +979,13 @@ struct DetailView: View {
           ? {
             guard let city else { return }
             Task {
-              await model.weatherStore.refresh(city: city)
+              model.weatherStore.discardExpiredWeather()
+              guard networkConnectivity.status == .available else { return }
+              model.weatherStore.startAttributionLoadIfNeeded()
+              _ = await model.weatherStore.startRequest(
+                for: city,
+                supersedingExisting: true
+              ).value
             }
           }
           : nil
@@ -990,10 +999,38 @@ struct DetailView: View {
         showsLargeTitle = isVisible
       },
       headerTitle: {
-        placeActionsMenu(
+        PlaceDetailActionsMenu(
           title: detailTitle,
-          savedPlace: savedPlace,
-          city: city
+          isSaved: savedPlace != nil,
+          canUsePlace: city != nil,
+          viewOnMap: {
+            ({ (city: City?, isSaved: Bool) in
+              guard let city else { return }
+              if isSaved {
+                router.showMap(placeID: placeID)
+              } else {
+                router.showMap(previewing: city)
+              }
+            })(city, savedPlace != nil)
+          },
+          savePlace: {
+            ({ (city: City?) in
+              // The store owns validation and persistence. The view only translates
+              // an error into localized, user-facing alert text.
+              guard let city else { return }
+              do {
+                _ = try model.placesStore.savePlace(city)
+              } catch {
+                mutationError = PlaceDetailMutationError(
+                  message: localizedPlacesErrorDescription(error, locale: locale)
+                )
+              }
+            })(city)
+          },
+          removePlace: { deleteSavedPlace(savedPlace: savedPlace) },
+          customizeDetailView: {
+            presentedSheet = .customize
+          }
         )
       }
     ) {
@@ -1028,14 +1065,29 @@ struct DetailView: View {
       )
     }
     .background(
-      theme.colors.weatherBackgroundColor(
-        for: screenColorSource.tone,
-        symbolName: screenColorSource.symbolName
-      )
+      ({ () -> Color in
+        guard let tone = screenColorSource.tone else {
+          return theme.colors.background
+        }
+        guard !theme.colors.usesIncreasedContrast else {
+          return theme.colors.background
+        }
+        return theme.colors.weatherIconColor(
+          for: tone,
+          symbolName: screenColorSource.symbolName
+        ).interpolated(with: theme.colors.background, by: 0.78)
+      }())
     )
     .refreshable {
       guard let city else { return }
-      await model.weatherStore.refresh(city: city)
+      model.weatherStore.discardExpiredWeather()
+      if networkConnectivity.status == .available {
+        model.weatherStore.startAttributionLoadIfNeeded()
+        _ = await model.weatherStore.startRequest(
+          for: city,
+          supersedingExisting: true
+        ).value
+      }
       guard !Task.isCancelled else { return }
       await model.searchNearbyPlaces(
         around: city,
@@ -1043,9 +1095,11 @@ struct DetailView: View {
         locale: locale
       )
     }
-    .weatherConditionScreenBackground(
-      for: screenColorSource.tone,
-      symbolName: screenColorSource.symbolName
+    .modifier(
+      WeatherConditionScreenBackgroundModifier(
+        tone: screenColorSource.tone,
+        symbolName: screenColorSource.symbolName
+      )
     )
     .navigationTitle(detailTitle)
     .navigationBarTitleDisplayMode(.inline)
@@ -1121,7 +1175,16 @@ struct DetailView: View {
     // request failure into a sequence of modal alerts.
     .alert(
       "Places",
-      isPresented: showsMutationError,
+      isPresented: (  // `.alert` requires a Boolean while `mutationError` also supplies its
+        // message. Clearing on dismissal keeps the two in sync.
+        Binding(
+          get: { mutationError != nil },
+          set: { isPresented in
+            if !isPresented {
+              mutationError = nil
+            }
+          }
+        )),
       presenting: mutationError
     ) { _ in
       Button("OK") {
@@ -1135,50 +1198,6 @@ struct DetailView: View {
   // MARK: - Forecast Recovery
 
   // MARK: - Place Actions
-
-  private func placeActionsMenu(
-    title: String,
-    savedPlace: SavedPlace?,
-    city: City?
-  ) -> some View {
-    PlaceDetailActionsMenu(
-      title: title,
-      isSaved: savedPlace != nil,
-      canUsePlace: city != nil,
-      viewOnMap: { viewOnMap(city: city, isSaved: savedPlace != nil) },
-      savePlace: { savePlace(city: city) },
-      removePlace: { deleteSavedPlace(savedPlace: savedPlace) },
-      customizeDetailView: {
-        presentedSheet = .customize
-      }
-    )
-  }
-
-  private var showsMutationError: Binding<Bool> {
-    // `.alert` requires a Boolean while `mutationError` also supplies its
-    // message. Clearing on dismissal keeps the two in sync.
-    Binding(
-      get: { mutationError != nil },
-      set: { isPresented in
-        if !isPresented {
-          mutationError = nil
-        }
-      }
-    )
-  }
-
-  private func savePlace(city: City?) {
-    // The store owns validation and persistence. The view only translates
-    // an error into localized, user-facing alert text.
-    guard let city else { return }
-    do {
-      _ = try model.placesStore.savePlace(city)
-    } catch {
-      mutationError = PlaceDetailMutationError(
-        message: localizedPlacesErrorDescription(error, locale: locale)
-      )
-    }
-  }
 
   private func deleteSavedPlace(savedPlace: SavedPlace?) {
     guard let savedPlace else { return }
@@ -1194,15 +1213,6 @@ struct DetailView: View {
       mutationError = PlaceDetailMutationError(
         message: localizedPlacesErrorDescription(error, locale: locale)
       )
-    }
-  }
-
-  private func viewOnMap(city: City?, isSaved: Bool) {
-    guard let city else { return }
-    if isSaved {
-      router.showMap(placeID: placeID)
-    } else {
-      router.showMap(previewing: city)
     }
   }
 
@@ -1424,23 +1434,6 @@ struct LocationReportHeader<HeaderTitle: View>: View {
   /// Retain the live sun-status vocabulary for today's forecast. Only the
   /// “Sunny for …” result (a non-today total) takes the shared Map
   /// card treatment below.
-  private var sunStatus: SunnyHoursCalculation.DailySunStatus? {
-    guard let weather,
-      let forecast
-    else {
-      return nil
-    }
-    let data = SunnyHoursCalculation.sunnyHoursData(
-      for: forecast,
-      timeZone: weather.timeZone
-    )
-    return SunnyHoursCalculation.dailySunStatus(
-      in: data,
-      selectedDate: forecast.date,
-      timeZone: weather.timeZone,
-      selectionCalendar: calendar
-    )
-  }
 
   private func sunStatusText(
     for sunStatus: SunnyHoursCalculation.DailySunStatus
@@ -1462,13 +1455,57 @@ struct LocationReportHeader<HeaderTitle: View>: View {
       resource.locale = locale
       return String(localized: resource)
     case .noSunToday:
-      if let sunlessForecastHorizonText = sunlessForecastHorizonText(
-        singularKey: "No sun in the next %lld day.",
-        pluralKey: "No sun in the next %lld days."
-      ) {
+      if let sunlessForecastHorizonText =
+        ({ () -> String? in
+          guard let weather,
+            let forecast,
+            let futureDayCount = SunnyHoursCalculation.sunlessFutureForecastDayCount(
+              after: forecast,
+              in: weather.dailyForecasts,
+              timeZone: weather.timeZone,
+              selectionCalendar: calendar
+            ), futureDayCount > 0
+          else { return nil }
+          let key: String.LocalizationValue =
+            futureDayCount == 1
+            ? "No sun in the next %lld day."
+            : "No sun in the next %lld days."
+          return String(
+            format: localizedString(key, locale: locale),
+            locale: locale,
+            Int64(futureDayCount)
+          )
+        }())
+      {
         return sunlessForecastHorizonText
       }
-      if let nextSunnyRelativeDateText {
+      if let nextSunnyRelativeDateText =
+        ({ () -> String? in
+          guard let weather,
+            let forecast,
+            let nextDate = SunnyHoursCalculation.nextSunnyForecastDate(
+              after: forecast,
+              in: weather.dailyForecasts,
+              timeZone: weather.timeZone,
+              selectionCalendar: calendar
+            )
+          else {
+            return nil
+          }
+
+          var cityCalendar = calendar
+          cityCalendar.timeZone = weather.timeZone
+          return Date.AnchoredRelativeFormatStyle(
+            anchor: nextDate,
+            allowedFields: [.day],
+            presentation: .named,
+            unitsStyle: .wide,
+            locale: locale,
+            calendar: cityCalendar,
+            capitalizationContext: .middleOfSentence
+          ).format(forecast.date)
+        })()
+      {
         return String(
           format: localizedString(
             "No sun today. Sun coming out %@.",
@@ -1480,13 +1517,57 @@ struct LocationReportHeader<HeaderTitle: View>: View {
       }
       return localizedString("No Sun Today", locale: locale)
     case .noMoreSunToday:
-      if let sunlessForecastHorizonText = sunlessForecastHorizonText(
-        singularKey: "No more sun in the next %lld day.",
-        pluralKey: "No more sun in the next %lld days."
-      ) {
+      if let sunlessForecastHorizonText =
+        ({ () -> String? in
+          guard let weather,
+            let forecast,
+            let futureDayCount = SunnyHoursCalculation.sunlessFutureForecastDayCount(
+              after: forecast,
+              in: weather.dailyForecasts,
+              timeZone: weather.timeZone,
+              selectionCalendar: calendar
+            ), futureDayCount > 0
+          else { return nil }
+          let key: String.LocalizationValue =
+            futureDayCount == 1
+            ? "No more sun in the next %lld day."
+            : "No more sun in the next %lld days."
+          return String(
+            format: localizedString(key, locale: locale),
+            locale: locale,
+            Int64(futureDayCount)
+          )
+        }())
+      {
         return sunlessForecastHorizonText
       }
-      if let nextSunnyRelativeDateText {
+      if let nextSunnyRelativeDateText =
+        ({ () -> String? in
+          guard let weather,
+            let forecast,
+            let nextDate = SunnyHoursCalculation.nextSunnyForecastDate(
+              after: forecast,
+              in: weather.dailyForecasts,
+              timeZone: weather.timeZone,
+              selectionCalendar: calendar
+            )
+          else {
+            return nil
+          }
+
+          var cityCalendar = calendar
+          cityCalendar.timeZone = weather.timeZone
+          return Date.AnchoredRelativeFormatStyle(
+            anchor: nextDate,
+            allowedFields: [.day],
+            presentation: .named,
+            unitsStyle: .wide,
+            locale: locale,
+            calendar: cityCalendar,
+            capitalizationContext: .middleOfSentence
+          ).format(forecast.date)
+        })()
+      {
         return String(
           format: localizedString(
             "No more sun today. Sun coming out %@.",
@@ -1502,63 +1583,9 @@ struct LocationReportHeader<HeaderTitle: View>: View {
     }
   }
 
-  /// A forecast-wide sunless message is only safe when every future forecast
-  /// date is assessable and has no sunny interval. Today is excluded so the
-  /// localized “next N days” count matches ordinary forward-looking wording.
-  private func sunlessForecastHorizonText(
-    singularKey: String.LocalizationValue,
-    pluralKey: String.LocalizationValue
-  ) -> String? {
-    guard let weather,
-      let forecast,
-      let futureDayCount =
-        SunnyHoursCalculation
-        .sunlessFutureForecastDayCount(
-          after: forecast,
-          in: weather.dailyForecasts,
-          timeZone: weather.timeZone,
-          selectionCalendar: calendar
-        ), futureDayCount > 0
-    else {
-      return nil
-    }
-
-    let key = futureDayCount == 1 ? singularKey : pluralKey
-    return String(
-      format: localizedString(key, locale: locale),
-      locale: locale,
-      Int64(futureDayCount)
-    )
-  }
-
   /// Formats the next proven sunny forecast relative to the selected
   /// city-local day, yielding locale-native copy such as “tomorrow” or
   /// “in 2 days” without assembling translated date fragments by hand.
-  private var nextSunnyRelativeDateText: String? {
-    guard let weather,
-      let forecast,
-      let nextDate = SunnyHoursCalculation.nextSunnyForecastDate(
-        after: forecast,
-        in: weather.dailyForecasts,
-        timeZone: weather.timeZone,
-        selectionCalendar: calendar
-      )
-    else {
-      return nil
-    }
-
-    var cityCalendar = calendar
-    cityCalendar.timeZone = weather.timeZone
-    return Date.AnchoredRelativeFormatStyle(
-      anchor: nextDate,
-      allowedFields: [.day],
-      presentation: .named,
-      unitsStyle: .wide,
-      locale: locale,
-      calendar: cityCalendar,
-      capitalizationContext: .middleOfSentence
-    ).format(forecast.date)
-  }
 
   /// The same complete sentence as `sunOutInText(to:)`, with only the
   /// duration emphasized. Attributed-string interpolation preserves that run
@@ -1669,7 +1696,25 @@ struct LocationReportHeader<HeaderTitle: View>: View {
       }
 
       Group {
-        if let sunStatus {
+        if let sunStatus =
+          ({ () -> SunnyHoursCalculation.DailySunStatus? in
+            guard let weather,
+              let forecast
+            else {
+              return nil
+            }
+            let data = SunnyHoursCalculation.sunnyHoursData(
+              for: forecast,
+              timeZone: weather.timeZone
+            )
+            return SunnyHoursCalculation.dailySunStatus(
+              in: data,
+              selectedDate: forecast.date,
+              timeZone: weather.timeZone,
+              selectionCalendar: calendar
+            )
+          })()
+        {
           switch sunStatus {
           case .sunnyForHours(let count):
             SunnyHoursStatusLine(hours: count)

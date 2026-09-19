@@ -374,24 +374,6 @@ final class SavedPlacesWeatherStore {
     #endif
   }
 
-  /// Refreshes one place immediately, preserving its stable saved identity.
-  /// `supersedingExisting: true` gives an explicit pull-to-refresh precedence
-  /// over an older background request for this one city only.
-  @discardableResult
-  func refresh(
-    city: City
-  ) async -> CityWeather? {
-    discardExpiredWeather()
-    guard networkConnectivity.status == .available else {
-      return weatherByID[city.id]
-    }
-    startAttributionLoadIfNeeded()
-    return await startRequest(
-      for: city,
-      supersedingExisting: true
-    ).value
-  }
-
   /// Cancels obsolete work and trims transient forecasts outside the model's
   /// explicit saved/current/search scope. A cold device-location launch may
   /// briefly preserve restored entries until Core Location resolves the stable
@@ -496,7 +478,7 @@ final class SavedPlacesWeatherStore {
   /// Starts one place-owned request, optionally replacing only that place's
   /// earlier work. The task commits and cleans itself so every caller can
   /// safely await the same result.
-  private func startRequest(
+  func startRequest(
     for city: City,
     supersedingExisting: Bool
   ) -> Task<CityWeather?, Never> {
@@ -578,7 +560,16 @@ final class SavedPlacesWeatherStore {
       }
       let issue: WeatherDataIssue
       if let serviceError = error as? WeatherServiceError {
-        issue = serviceError.dataIssue
+        issue = {
+          switch serviceError {
+          case .requestFailed(_, let detail):
+            return .weatherRequestFailed(detail)
+          case .undefinedTimeZone:
+            return .missingTimeZone
+          case .missingForecastData:
+            return .missingForecastData
+          }
+        }()
       } else {
         issue = .weatherRequestFailed(error.localizedDescription)
       }
@@ -715,7 +706,7 @@ final class SavedPlacesWeatherStore {
   /// Removes forecasts once their own successful refresh is a day old. A
   /// missing or future timestamp cannot prove a cache entry is current, so it
   /// is treated as expired as well.
-  private func discardExpiredWeather(now: Date = Date()) {
+  func discardExpiredWeather(now: Date = Date()) {
     let cachedIDs = Set(weatherByID.keys)
       .union(cachedWeatherByID.keys)
       .union(refreshDatesByPlaceID.keys)
@@ -1024,6 +1015,8 @@ private actor PlaceWeatherSnapshotWriter {
     }
   }
 
+  /// Actor-isolated cancellation entry point used by the main-actor store.
+  /// Its state mutation cannot be inlined across the actor boundary.
   func cancelPending(operation: Int) {
     guard operation > latestOperation else { return }
     latestOperation = operation
@@ -1041,16 +1034,17 @@ private actor PlaceWeatherSnapshotWriter {
     }
   }
 
+  /// Actor-isolated commit invoked after the nonisolated delay task.
+  /// Its state access cannot be inlined across that actor hop.
   private func persist(
     _ snapshot: PlaceWeatherSnapshot,
     operation: Int
   ) {
     guard operation == latestOperation,
       !Task.isCancelled
-    else {
-      return
-    }
+    else { return }
     cache.save(snapshot)
     pendingSave = nil
   }
+
 }

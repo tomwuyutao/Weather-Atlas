@@ -165,10 +165,18 @@ enum WidgetTextSize: String, Codable, Hashable {
         ) == nil
         ? AppTextSizeLevel.defaultRawValue
         : defaults.integer(forKey: AppTextSizePolicy.appLevelKey)
-      let effective = AppTextSizePolicy.effectiveDynamicTypeSize(
-        useSystem: usesSystem,
-        appLevel: appLevel,
-        systemCategory: UIApplication.shared.preferredContentSizeCategory
+      let requested =
+        usesSystem
+        ? DynamicTypeSize(UIApplication.shared.preferredContentSizeCategory) ?? .large
+        : (AppTextSizeLevel(
+          rawValue: min(
+            max(appLevel, AppTextSizeLevel.minimumSelectableRawValue),
+            AppTextSizeLevel.maximumSelectableRawValue
+          )
+        ) ?? .large).dynamicTypeSize
+      let effective = min(
+        max(requested, AppTextSizeLevel.small.dynamicTypeSize),
+        AppTextSizeLevel.xLarge.dynamicTypeSize
       )
       if effective <= .small { return .small }
       if effective == .medium { return .medium }
@@ -338,10 +346,13 @@ enum WidgetDataStore {
       // attach the widget-specific strings needed by the extension process.
       var publishedCatalog = catalog
       let previousCatalog = self.catalog()
-      publishedCatalog.currentLocationGeneration = currentLocationGeneration(
-        from: previousCatalog,
-        for: publishedCatalog
-      )
+      publishedCatalog.currentLocationGeneration = {
+        guard let previousCatalog,
+          defaultLocationIdentityMatches(previousCatalog, publishedCatalog),
+          let generation = previousCatalog.currentLocationGeneration
+        else { return UUID().uuidString }
+        return generation
+      }()
       publishedCatalog.retiredCities = retiredWidgetCities(
         from: previousCatalog,
         keepingActive: publishedCatalog.cities
@@ -358,7 +369,43 @@ enum WidgetDataStore {
         catalog.appLanguageIdentifier.isEmpty
         ? Locale.autoupdatingCurrent
         : Locale(identifier: catalog.appLanguageIdentifier)
-      publishedCatalog.localizedStrings = localizedWidgetStrings(locale: locale)
+      publishedCatalog.localizedStrings =
+        ([
+          "Sunny Hours": localizedString("Sunny Hours", locale: (locale)),
+          "Track sunny hours for a chosen city.": localizedString(
+            "Track sunny hours for a chosen city.",
+            locale: (locale)
+          ),
+          "Track sunny daytime hours for a chosen city.": localizedString(
+            "Track sunny daytime hours for a chosen city.",
+            locale: (locale)
+          ),
+          "Current Location": localizedString("Current Location", locale: (locale)),
+          "Home Location": localizedString("Home Location", locale: (locale)),
+          "Saved Place": localizedString("Saved Place", locale: (locale)),
+          "Today": localizedString("Today", locale: (locale)),
+          "Sunny": localizedString("Sunny", locale: (locale)),
+          "Partly Sunny": localizedString("Partly Sunny", locale: (locale)),
+          "No Sun": localizedString("No Sun", locale: (locale)),
+          "Rain": localizedString("Rain", locale: (locale)),
+          "Drizzle": localizedString("Drizzle", locale: (locale)),
+          "Sun Out Now": localizedString("Sun Out Now", locale: (locale)),
+          "Sun Out in %@": localizedString("Sun Out in %@", locale: (locale)),
+          "No Sun Today": localizedString("No Sun Today", locale: (locale)),
+          "No More Sun Today": localizedString(
+            "No More Sun Today",
+            locale: (locale)
+          ),
+          "%@ h": localizedString("%@ h", locale: (locale)),
+          "Weather unavailable.": localizedString(
+            "Weather unavailable.",
+            locale: (locale)
+          ),
+          "less than one minute": localizedString(
+            "less than one minute",
+            locale: (locale)
+          ),
+        ])
 
       guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
       // Catalog publication happens from several normal app lifecycle paths.
@@ -374,23 +421,6 @@ enum WidgetDataStore {
       }
       defaults.set(data, forKey: catalogKey)
       WidgetCenter.shared.reloadAllTimelines()
-    }
-
-    /// Retains one generation through ordinary GPS jitter and metadata/name
-    /// refinement. A mode switch, timezone change, or meaningful coordinate
-    /// change creates a new generation that invalidates an older widget-owned
-    /// Current Location snapshot without touching Saved/Home caches.
-    private static func currentLocationGeneration(
-      from previousCatalog: WidgetDataCatalog?,
-      for catalog: WidgetDataCatalog
-    ) -> String {
-      guard let previousCatalog,
-        defaultLocationIdentityMatches(previousCatalog, catalog),
-        let generation = previousCatalog.currentLocationGeneration
-      else {
-        return UUID().uuidString
-      }
-      return generation
     }
 
     private static func defaultLocationIdentityMatches(
@@ -491,51 +521,10 @@ enum WidgetDataStore {
       WidgetCenter.shared.reloadAllTimelines()
     }
 
-    // MARK: - Published Widget Copy
+  // MARK: - Published Widget Copy
 
-    /// Resolves the small amount of copy owned by the widget extension while
-    /// the main app's String Catalog and selected locale are available.
-    private static func localizedWidgetStrings(locale: Locale) -> [String: String] {
-      // Use source strings as dictionary keys. Widget views ask for the same
-      // keys, so they can fall back to English-like source text if this map is
-      // absent during a first launch.
-      [
-        "Sunny Hours": localizedString("Sunny Hours", locale: locale),
-        "Track sunny hours for a chosen city.": localizedString(
-          "Track sunny hours for a chosen city.",
-          locale: locale
-        ),
-        "Track sunny daytime hours for a chosen city.": localizedString(
-          "Track sunny daytime hours for a chosen city.",
-          locale: locale
-        ),
-        "Current Location": localizedString("Current Location", locale: locale),
-        "Home Location": localizedString("Home Location", locale: locale),
-        "Saved Place": localizedString("Saved Place", locale: locale),
-        "Today": localizedString("Today", locale: locale),
-        "Sunny": localizedString("Sunny", locale: locale),
-        "Partly Sunny": localizedString("Partly Sunny", locale: locale),
-        "No Sun": localizedString("No Sun", locale: locale),
-        "Rain": localizedString("Rain", locale: locale),
-        "Drizzle": localizedString("Drizzle", locale: locale),
-        "Sun Out Now": localizedString("Sun Out Now", locale: locale),
-        "Sun Out in %@": localizedString("Sun Out in %@", locale: locale),
-        "No Sun Today": localizedString("No Sun Today", locale: locale),
-        "No More Sun Today": localizedString(
-          "No More Sun Today",
-          locale: locale
-        ),
-        "%@ h": localizedString("%@ h", locale: locale),
-        "Weather unavailable.": localizedString(
-          "Weather unavailable.",
-          locale: locale
-        ),
-        "less than one minute": localizedString(
-          "less than one minute",
-          locale: locale
-        ),
-      ]
-    }
+  /// Resolves the small amount of copy owned by the widget extension while
+  /// the main app's String Catalog and selected locale are available.
   #endif
 }
 
@@ -700,7 +689,20 @@ enum WidgetDataStore {
     /// unavailable state; only a failed request, explicit no-forecast state,
     /// unsafe identity, or missing timezone blocks the widget.
     var widgetCurrentIssue: WeatherDataIssue? {
-      if let dataIssue = widgetBlockingDataIssue { return dataIssue }
+      if let blockingIssue =
+        ({ () -> WeatherDataIssue? in
+          guard let dataIssue else { return nil }
+          switch dataIssue.kind {
+          case .weatherRequestFailed, .unresolvedPlace, .missingForecastData,
+            .missingTimeZone:
+            return dataIssue
+          default:
+            return nil
+          }
+        }())
+      {
+        return blockingIssue
+      }
       if let identityIssue = widgetIdentityIssue { return identityIssue }
       guard timeZoneIdentifier.flatMap(TimeZone.init(identifier:)) != nil else {
         return .missingTimeZone
@@ -712,7 +714,20 @@ enum WidgetDataStore {
     /// Its requirements differ from the daily widget only because it needs at
     /// least one available forecast row to draw.
     var widgetSunnyWindowIssue: WeatherDataIssue? {
-      if let dataIssue = widgetBlockingDataIssue { return dataIssue }
+      if let blockingIssue =
+        ({ () -> WeatherDataIssue? in
+          guard let dataIssue else { return nil }
+          switch dataIssue.kind {
+          case .weatherRequestFailed, .unresolvedPlace, .missingForecastData,
+            .missingTimeZone:
+            return dataIssue
+          default:
+            return nil
+          }
+        }())
+      {
+        return blockingIssue
+      }
       if let identityIssue = widgetIdentityIssue { return identityIssue }
       guard timeZoneIdentifier.flatMap(TimeZone.init(identifier:)) != nil else {
         return .missingTimeZone
@@ -721,22 +736,6 @@ enum WidgetDataStore {
         return .missingForecastData
       }
       return nil
-    }
-
-    /// Returns only issues that mean the snapshot cannot safely identify or
-    /// represent a place at all. Legacy field-level issues remain decodable but
-    /// no longer hide otherwise usable WeatherKit data.
-    var widgetBlockingDataIssue: WeatherDataIssue? {
-      guard let dataIssue else { return nil }
-      switch dataIssue.kind {
-      case .weatherRequestFailed,
-        .unresolvedPlace,
-        .missingForecastData,
-        .missingTimeZone:
-        return dataIssue
-      default:
-        return nil
-      }
     }
 
     // MARK: - Combining Catalog and Snapshot Data
@@ -767,7 +766,17 @@ enum WidgetDataStore {
       let sunrise: Date?
       let sunset: Date?
 
-      if snapshot.representsLocalDay(containing: referenceDate) {
+      if ({ () -> Bool in
+        guard let timeZoneIdentifier = snapshot.timeZoneIdentifier,
+          let timeZone = TimeZone(identifier: timeZoneIdentifier),
+          let representedLocalDate = snapshot.representedLocalDate
+        else {
+          return false
+        }
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        return calendar.isDate(representedLocalDate, inSameDayAs: referenceDate)
+      }()) {
         hourlyConditions = snapshot.hourlyConditions
         hourlyWeatherConditions = snapshot.hourlyWeatherConditions
         currentWeather = snapshot.currentWeather
@@ -867,25 +876,5 @@ enum WidgetDataStore {
       )
     }
 
-    /// Returns the same catalog/snapshot value with one locally resolved zone.
-    func replacingTimeZone(with identifier: String) -> WidgetDataCity {
-      WidgetDataCity(
-        id: id,
-        legacyIdentifiers: legacyIdentifiers,
-        cityName: cityName,
-        configurationSubtitle: configurationSubtitle,
-        timeZoneIdentifier: identifier,
-        latitude: latitude,
-        longitude: longitude,
-        hourlyConditions: hourlyConditions,
-        hourlyWeatherConditions: hourlyWeatherConditions,
-        currentWeather: currentWeather,
-        weatherFetchedAt: weatherFetchedAt,
-        sunrise: sunrise,
-        sunset: sunset,
-        sunnyWindowDays: sunnyWindowDays,
-        dataIssue: dataIssue
-      )
-    }
   }
 #endif

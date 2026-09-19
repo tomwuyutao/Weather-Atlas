@@ -99,18 +99,17 @@ struct WidgetConditionIcon: View {
     Image(systemName: weather.symbolName)
       .font(.system(size: size, weight: .medium))
       .symbolRenderingMode(.monochrome)
-      .foregroundStyle(iconColor)
-  }
-
-  private var iconColor: Color {
-    guard widgetRenderingMode == .fullColor else { return .primary }
-    return widgetConditionIconColor(
-      for: weather,
-      colors: AppPalette.values(
-        for: colorScheme,
-        contrast: colorSchemeContrast
-      )
-    )
+      .foregroundStyle(
+        ({
+          guard widgetRenderingMode == .fullColor else { return Color.primary }
+          return widgetConditionIconColor(
+            for: weather,
+            colors: AppPalette.values(
+              for: colorScheme,
+              contrast: colorSchemeContrast
+            )
+          )
+        })())
   }
 }
 

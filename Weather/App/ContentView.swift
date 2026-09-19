@@ -118,7 +118,17 @@ struct ContentView: View {
       }
       .alert(
         missingDataAlerts.currentAlert?.title ?? "",
-        isPresented: showsMissingDataAlert,
+        isPresented: (  // `.alert` expects a Boolean binding, while the optional message also
+          // carries the alert's title and body. This bridges those two shapes.
+          Binding(
+            get: { missingDataAlerts.currentAlert != nil },
+            set: { isPresented in
+              if !isPresented {
+                missingDataAlerts.currentAlert = nil
+                missingDataAlerts.presentNextAfterYield()
+              }
+            }
+          )),
         presenting: missingDataAlerts.currentAlert
       ) { _ in
         Button("OK") {}
@@ -132,7 +142,13 @@ struct ContentView: View {
         AppDelegate.updateHomeScreenShortcuts()
         model.publishWidgetCatalog(locale: locale)
         guard !model.locationProvider.isUsingHomeLocation,
-          model.locationProvider.hasLocationAuthorization
+          ({ () -> Bool in
+            switch model.locationProvider.manager.authorizationStatus {
+            case .authorizedAlways, .authorizedWhenInUse: return true
+            case .notDetermined, .denied, .restricted: return false
+            @unknown default: return false
+            }
+          }())
         else {
           return
         }
@@ -151,7 +167,18 @@ struct ContentView: View {
       // its coordinate and locality are live. Republish that one small
       // contract whenever the app receives a new location or its weather
       // response supplies the authoritative city/timezone.
-      .onChange(of: widgetCurrentLocationIdentity) {
+      .onChange(
+        of: (WidgetCurrentLocationIdentity(
+          defaultLocationKind: model.isUsingHomeLocation
+            ? .homeLocation
+            : .currentLocation,
+          latitude: model.locationProvider.coordinate?.latitude,
+          longitude: model.locationProvider.coordinate?.longitude,
+          metadata: model.locationProvider.metadata,
+          weatherCityName: model.locationWeather?.city.name,
+          weatherTimeZoneIdentifier: model.locationWeather?.timeZone.identifier
+        ))
+      ) {
         let retainedRecentCities = model.recentSearches.cities.filter { city in
           !(model.placesStore.savedPlaceID(matching: city) != nil
             || {
@@ -188,9 +215,20 @@ struct ContentView: View {
           return
         }
         Task {
-          await refreshWeather(
+          await model.weatherStore.load(
+            cities: model.placesStore.allPlaces.map(\.city),
             forceRefresh: previousStatus == .offline
           )
+          let resolvedCities = model.placesStore.allPlaces.compactMap { place in
+            model.weatherStore.weather(for: place.id)?.city
+          }.filter(PlacesLibraryValidator.isValidCity)
+          _ = try? model.placesStore.savePlaces(resolvedCities)
+          if model.locationProvider.hasUsableCoordinate {
+            await model.ensureCurrentLocationWeather(
+              forceRefresh: previousStatus == .offline,
+              locale: locale
+            )
+          }
         }
       }
       .onChange(of: scenePhase, handleScenePhaseChange)
@@ -215,9 +253,16 @@ struct ContentView: View {
           for: .weatherOpenMainViewShortcut
         )
       ) { notification in
-        guard let rawValue = notification.object as? String,
-          let destination = HomeScreenShortcutDestination.decode(rawValue)
-        else { return }
+        guard let rawValue = notification.object as? String else { return }
+        let destination: HomeScreenShortcutDestination? = {
+          switch rawValue {
+          case "findSunNearMe": .findSunNearMe
+          case "map": .map
+          case "places", "list": .places
+          default: nil
+          }
+        }()
+        guard let destination else { return }
         handleShortcut(destination)
       }
   }
@@ -347,18 +392,6 @@ struct ContentView: View {
   /// Equatable facts that change the widget's default-location identity,
   /// mode, or display name. Keeping it value-based avoids publishing on
   /// unrelated `WeatherModel` updates.
-  private var widgetCurrentLocationIdentity: WidgetCurrentLocationIdentity {
-    WidgetCurrentLocationIdentity(
-      defaultLocationKind: model.isUsingHomeLocation
-        ? .homeLocation
-        : .currentLocation,
-      latitude: model.locationProvider.coordinate?.latitude,
-      longitude: model.locationProvider.coordinate?.longitude,
-      metadata: model.locationProvider.metadata,
-      weatherCityName: model.locationWeather?.city.name,
-      weatherTimeZoneIdentifier: model.locationWeather?.timeZone.identifier
-    )
-  }
 
   // MARK: - Root Lifecycle
 
@@ -368,7 +401,13 @@ struct ContentView: View {
     guard !Task.isCancelled, !tutorial.shouldPresent else { return }
 
     model.retainWeatherScope()
-    await model.loadSavedWeather()
+    await model.weatherStore.load(
+      cities: model.placesStore.allPlaces.map(\.city)
+    )
+    let resolvedCities = model.placesStore.allPlaces.compactMap { place in
+      model.weatherStore.weather(for: place.id)?.city
+    }.filter(PlacesLibraryValidator.isValidCity)
+    _ = try? model.placesStore.savePlaces(resolvedCities)
     guard !Task.isCancelled, !tutorial.shouldPresent else { return }
 
     if model.isUsingHomeLocation {
@@ -461,25 +500,29 @@ struct ContentView: View {
   ) {
     guard newPhase == .active else { return }
     if !model.locationProvider.isUsingHomeLocation,
-      model.locationProvider.hasLocationAuthorization
+      ({ () -> Bool in
+        switch model.locationProvider.manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: return true
+        case .notDetermined, .denied, .restricted: return false
+        @unknown default: return false
+        }
+      }())
     {
       model.locationProvider.requestCurrentLocation(
         preferredLocale: locale
       )
     }
     Task {
-      await refreshWeather()
-    }
-  }
-
-  /// Applies the app's common refresh policy to saved and current weather.
-  private func refreshWeather(forceRefresh: Bool = false) async {
-    await model.loadSavedWeather(forceRefresh: forceRefresh)
-    if model.locationProvider.hasUsableCoordinate {
-      await model.ensureCurrentLocationWeather(
-        forceRefresh: forceRefresh,
-        locale: locale
+      await model.weatherStore.load(
+        cities: model.placesStore.allPlaces.map(\.city)
       )
+      let resolvedCities = model.placesStore.allPlaces.compactMap { place in
+        model.weatherStore.weather(for: place.id)?.city
+      }.filter(PlacesLibraryValidator.isValidCity)
+      _ = try? model.placesStore.savePlaces(resolvedCities)
+      if model.locationProvider.hasUsableCoordinate {
+        await model.ensureCurrentLocationWeather(locale: locale)
+      }
     }
   }
 
@@ -748,7 +791,17 @@ struct ContentView: View {
     }
 
     if cityIdentifier == WidgetDataStore.currentLocationIdentifier {
-      selectCurrentWidgetToday()
+      let destinationTimeZone =
+        model.locationTimeZone
+        ?? model.currentLocationPlaceCity?.timeZoneIdentifier.flatMap(
+          TimeZone.init(identifier:)
+        )
+        ?? WidgetDataStore.catalog()?.currentLocation?.timeZoneIdentifier
+        .flatMap(TimeZone.init(identifier:))
+        ?? model.forecastCalendar.timeZone
+      var destinationCalendar = model.forecastCalendar
+      destinationCalendar.timeZone = destinationTimeZone
+      selectedDate = destinationCalendar.startOfDay(for: .now)
       router.yourLocationPath = []
       router.selectedTab = .yourLocation
       return
@@ -764,7 +817,14 @@ struct ContentView: View {
     }
 
     selectWidgetDestinationToday(
-      in: widgetTimeZone(for: savedPlace, identifier: cityIdentifier)
+      in: (model.weatherStore.weather(for: (savedPlace).id)?.timeZone
+        ?? (savedPlace).city.timeZoneIdentifier.flatMap(
+          TimeZone.init(identifier:)
+        )
+        ?? WidgetDataStore.catalog()?.cities.first {
+          $0.matchesWidgetIdentifier((cityIdentifier))
+        }?.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
+        ?? model.forecastCalendar.timeZone)
     )
     router.selectedTab = .savedPlaces
     router.savedPlacesPath = [.place(id: savedPlace.id)]
@@ -797,19 +857,6 @@ struct ContentView: View {
   /// Resets the shared selector before a Current/Home Location widget route.
   /// While location state is restoring, the published widget zone still
   /// supplies the correct local midnight for that navigation request.
-  private func selectCurrentWidgetToday() {
-    let destinationTimeZone =
-      model.locationTimeZone
-      ?? model.currentLocationPlaceCity?.timeZoneIdentifier.flatMap(
-        TimeZone.init(identifier:)
-      )
-      ?? WidgetDataStore.catalog()?.currentLocation?.timeZoneIdentifier
-      .flatMap(TimeZone.init(identifier:))
-      ?? model.forecastCalendar.timeZone
-    var destinationCalendar = model.forecastCalendar
-    destinationCalendar.timeZone = destinationTimeZone
-    selectedDate = destinationCalendar.startOfDay(for: .now)
-  }
 
   /// Resets a Saved Place route to that city's local Today while retaining the
   /// shared selector's calendar representation used across the app's tabs.
@@ -829,19 +876,6 @@ struct ContentView: View {
 
   /// Uses app weather first, then persisted city/catalog metadata, so both a
   /// healthy widget and its unavailable-state link resolve the same local day.
-  private func widgetTimeZone(
-    for savedPlace: SavedPlace,
-    identifier: String
-  ) -> TimeZone {
-    model.weatherStore.weather(for: savedPlace.id)?.timeZone
-      ?? savedPlace.city.timeZoneIdentifier.flatMap(
-        TimeZone.init(identifier:)
-      )
-      ?? WidgetDataStore.catalog()?.cities.first {
-        $0.matchesWidgetIdentifier(identifier)
-      }?.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
-      ?? model.forecastCalendar.timeZone
-  }
 
   /// Recovers the Current/Home widget from the location-backed source rather
   /// than borrowing any Saved Place with a similar display name. A cold device-
@@ -851,7 +885,15 @@ struct ContentView: View {
     if !model.isUsingHomeLocation,
       !model.locationProvider.hasUsableCoordinate
     {
-      guard model.locationProvider.hasLocationAuthorization else { return }
+      guard
+        ({ () -> Bool in
+          switch model.locationProvider.manager.authorizationStatus {
+          case .authorizedAlways, .authorizedWhenInUse: return true
+          case .notDetermined, .denied, .restricted: return false
+          @unknown default: return false
+          }
+        }())
+      else { return }
       guard !model.locationProvider.isUsingHomeLocation else { return }
       model.locationProvider.requestCurrentLocation(
         preferredLocale: locale
@@ -955,7 +997,13 @@ struct ContentView: View {
             return
           }
           guard let savedPlace else { return }
-          _ = await model.weatherStore.refresh(city: savedPlace.city)
+          model.weatherStore.discardExpiredWeather()
+          guard networkConnectivity.status == .available else { return }
+          model.weatherStore.startAttributionLoadIfNeeded()
+          _ = await model.weatherStore.startRequest(
+            for: savedPlace.city,
+            supersedingExisting: true
+          ).value
         },
         isStillMissing: {
           if isCurrentLocationWidget {
@@ -977,19 +1025,6 @@ struct ContentView: View {
     }
   }
 
-  private var showsMissingDataAlert: Binding<Bool> {
-    // `.alert` expects a Boolean binding, while the optional message also
-    // carries the alert's title and body. This bridges those two shapes.
-    Binding(
-      get: { missingDataAlerts.currentAlert != nil },
-      set: { isPresented in
-        if !isPresented {
-          missingDataAlerts.currentAlert = nil
-          missingDataAlerts.presentNextAfterYield()
-        }
-      }
-    )
-  }
 }
 
 /// Minimal app-side trigger for publishing the special widget default-location

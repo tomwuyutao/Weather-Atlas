@@ -166,7 +166,32 @@ private struct SunnyWindowLargeChart: View {
       let rowsHeight = CGFloat(visibleDays.count) * rowHeight
 
       VStack(spacing: 2) {
-        axisRow(timelineWidth: timelineWidth)
+        (HStack(spacing: 0) {
+          Color.clear.frame(width: labelWidth)
+          ZStack(alignment: .leading) {
+            // Hours are unique integers, so `\.self` is a stable identity
+            // for SwiftUI's lightweight axis-label ForEach.
+            ForEach((chartBounds.axisHours(maximumTickCount: 8)), id: \.self) { hour in
+              Text(
+                hour == 24
+                  ? "24"
+                  : String(format: "%02d", ((hour % 24) + 24) % 24)
+              )
+              .font(.caption2.weight(.semibold))
+              .foregroundStyle(
+                ((widgetRenderingMode != .fullColor)
+                  ? .secondary
+                  : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast))
+                    .secondaryText)
+              )
+              .position(
+                x: chartBounds.xPosition(for: Double(hour), width: (timelineWidth)),
+                y: axisHeight / 2
+              )
+            }
+          }
+          .frame(width: (timelineWidth), height: axisHeight)
+        })
         // Overlay independent layers on the same chart coordinate space:
         // content capsules first, then noninteractive guides and marker.
         ZStack {
@@ -199,33 +224,6 @@ private struct SunnyWindowLargeChart: View {
   // MARK: - Chart Layers
 
   /// Positions hour labels over the shared timeline width.
-  private func axisRow(timelineWidth: CGFloat) -> some View {
-    HStack(spacing: 0) {
-      Color.clear.frame(width: labelWidth)
-      ZStack(alignment: .leading) {
-        // Hours are unique integers, so `\.self` is a stable identity
-        // for SwiftUI's lightweight axis-label ForEach.
-        ForEach((chartBounds.axisHours(maximumTickCount: 8)), id: \.self) { hour in
-          Text(
-            hour == 24
-              ? "24"
-              : String(format: "%02d", ((hour % 24) + 24) % 24)
-          )
-          .font(.caption2.weight(.semibold))
-          .foregroundStyle(
-            ((widgetRenderingMode != .fullColor)
-              ? .secondary
-              : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)).secondaryText)
-          )
-          .position(
-            x: chartBounds.xPosition(for: Double(hour), width: timelineWidth),
-            y: axisHeight / 2
-          )
-        }
-      }
-      .frame(width: timelineWidth, height: axisHeight)
-    }
-  }
 
   /// Builds date labels and contiguous hourly-weather capsules.
   private func rowsView(
@@ -287,7 +285,19 @@ private struct SunnyWindowLargeChart: View {
                 )
               },
             bounds: chartBounds,
-            colors: sharedChartColors,
+            colors: (SunnyHoursChartColors(
+              primary: ((widgetRenderingMode != .fullColor)
+                ? .primary
+                : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)).titleText),
+              secondary: ((widgetRenderingMode != .fullColor)
+                ? .secondary
+                : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)).secondaryText),
+              sun: segmentColor(for: .clear),
+              partlySunny: segmentColor(for: .partlySunny),
+              rain: segmentColor(for: .rain),
+              drizzle: segmentColor(for: .drizzle),
+              noSun: segmentColor(for: .cloudy)
+            )),
             height: capsuleHeight
           )
           // Give each shared capsule track a stable 16-point lane.
@@ -436,21 +446,6 @@ private struct SunnyWindowLargeChart: View {
   }
 
   /// Adapter-only colour policy for the shared app/widget capsule renderer.
-  private var sharedChartColors: SunnyHoursChartColors {
-    SunnyHoursChartColors(
-      primary: ((widgetRenderingMode != .fullColor)
-        ? .primary
-        : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)).titleText),
-      secondary: ((widgetRenderingMode != .fullColor)
-        ? .secondary
-        : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)).secondaryText),
-      sun: segmentColor(for: .clear),
-      partlySunny: segmentColor(for: .partlySunny),
-      rain: segmentColor(for: .rain),
-      drizzle: segmentColor(for: .drizzle),
-      noSun: segmentColor(for: .cloudy)
-    )
-  }
 
   /// Retains clear, precipitation, and neutral no-sun weights when WidgetKit
   /// enforces a monochrome or tinted rendering mode.
@@ -484,10 +479,16 @@ private struct SunnyWindowLargeChart: View {
     case .drizzle:
       colors.dotDrizzle
     case .cloudy:
-      widgetNoSunTimelineColor(
-        colorScheme: colorScheme,
-        contrast: colorSchemeContrast
-      )
+      switch (colorScheme, colorSchemeContrast) {
+      case (.dark, .increased):
+        ThemeColors.increasedContrastDark.noSunTimelineFill
+      case (.dark, _):
+        ThemeColors.dark.noSunTimelineFill
+      case (_, .increased):
+        ThemeColors.increasedContrastLight.noSunTimelineFill
+      default:
+        ThemeColors.light.noSunTimelineFill
+      }
     }
   }
 

@@ -238,30 +238,6 @@ struct PlacesDocumentStore {
     self.fileManager = fileManager
   }
 
-  /// Resolves the app-specific Application Support document location.
-  /// Application Support is appropriate for app-owned data that should be
-  /// backed up with the app but not be manually visible in Files.
-  static func live(
-    fileManager: FileManager = .default,
-    bundleIdentifier: String? = Bundle.main.bundleIdentifier
-  ) throws -> PlacesDocumentStore {
-    let applicationSupportURL = try fileManager.url(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask,
-      appropriateFor: nil,
-      create: true
-    )
-    let directoryName = bundleIdentifier ?? "WeatherAtlas"
-    let directoryURL =
-      applicationSupportURL
-      .appendingPathComponent(directoryName, isDirectory: true)
-      .appendingPathComponent("Places", isDirectory: true)
-    return PlacesDocumentStore(
-      fileURL: directoryURL.appendingPathComponent(currentFileName),
-      fileManager: fileManager
-    )
-  }
-
   // MARK: - Loading and Saving
 
   /// Loads and validates the current document, or returns `nil` if none exists.
@@ -419,8 +395,8 @@ enum PlacesLibraryValidator {
       // a timezone, but that must not hide the entire library or turn a
       // harmless local-date exclusion into a load failure. Leave the
       // timezone optional here; the local coordinate time-zone lookup
-      // resolves it before WeatherKit is queried, and a successfully
-      // resolved city is written back by `WeatherModel.loadSavedWeather`.
+      // resolves it before WeatherKit is queried, and saved-forecast loading
+      // writes the successfully resolved city back into this library.
       //
       // New places still go through `isValidCity(_:)` at the save boundary,
       // so search/map flows cannot deliberately create incomplete rows.
@@ -629,8 +605,26 @@ enum CurrentLocationCityMatcher {
         }
         return lhs == rhs
       }(),
-      let candidateLocation = location(for: candidate),
-      let resolvedCurrentLocation = location(for: currentLocation)
+      let candidateLocation =
+        ({ (city: City) -> CLLocation? in
+          guard city.latitude.isFinite, city.longitude.isFinite,
+            (-90...90).contains(city.latitude),
+            (-180...180).contains(city.longitude)
+          else {
+            return nil
+          }
+          return CLLocation(latitude: city.latitude, longitude: city.longitude)
+        })(candidate),
+      let resolvedCurrentLocation =
+        ({ (city: City) -> CLLocation? in
+          guard city.latitude.isFinite, city.longitude.isFinite,
+            (-90...90).contains(city.latitude),
+            (-180...180).contains(city.longitude)
+          else {
+            return nil
+          }
+          return CLLocation(latitude: city.latitude, longitude: city.longitude)
+        })(currentLocation)
     else {
       return false
     }
@@ -639,24 +633,32 @@ enum CurrentLocationCityMatcher {
       <= maximumDistanceMeters
   }
 
-  private static func location(for city: City) -> CLLocation? {
-    guard city.latitude.isFinite, city.longitude.isFinite,
-      (-90...90).contains(city.latitude),
-      (-180...180).contains(city.longitude)
-    else {
-      return nil
-    }
-    return CLLocation(latitude: city.latitude, longitude: city.longitude)
-  }
-
   private static func countriesMatch(_ lhs: City, _ rhs: City) -> Bool {
     let lhsCode =
-      normalizedCountryCode(lhs.countryISO2Code)
+      ({ (value: String?) -> String? in
+        guard
+          let value = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+          ).uppercased(), value.count == 2
+        else {
+          return nil
+        }
+        return value
+      })(lhs.countryISO2Code)
       ?? CountryCityCatalog.countryISO2Code(
         matchingCountryName: lhs.country
       )
     let rhsCode =
-      normalizedCountryCode(rhs.countryISO2Code)
+      ({ (value: String?) -> String? in
+        guard
+          let value = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+          ).uppercased(), value.count == 2
+        else {
+          return nil
+        }
+        return value
+      })(rhs.countryISO2Code)
       ?? CountryCityCatalog.countryISO2Code(
         matchingCountryName: rhs.country
       )
@@ -677,17 +679,6 @@ enum CurrentLocationCityMatcher {
       locale: Locale(identifier: "en_US_POSIX")
     )
     return !lhsCountry.isEmpty && lhsCountry == rhsCountry
-  }
-
-  private static func normalizedCountryCode(_ value: String?) -> String? {
-    guard
-      let value = value?.trimmingCharacters(
-        in: .whitespacesAndNewlines
-      ).uppercased(), value.count == 2
-    else {
-      return nil
-    }
-    return value
   }
 
 }
@@ -723,7 +714,30 @@ final class SavedPlacesStore {
     document = .empty
     self.documentStore = documentStore
     do {
-      let store = try documentStore ?? PlacesDocumentStore.live()
+      let store =
+        try documentStore
+        ?? {
+          let fileManager = FileManager.default
+          let applicationSupportURL = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+          )
+          let directoryURL =
+            applicationSupportURL
+            .appendingPathComponent(
+              Bundle.main.bundleIdentifier ?? "WeatherAtlas",
+              isDirectory: true
+            )
+            .appendingPathComponent("Places", isDirectory: true)
+          return PlacesDocumentStore(
+            fileURL: directoryURL.appendingPathComponent(
+              PlacesDocumentStore.currentFileName
+            ),
+            fileManager: fileManager
+          )
+        }()
       self.documentStore = store
       if let loadedDocument = try store.load() {
         document = loadedDocument
@@ -781,7 +795,26 @@ final class SavedPlacesStore {
       if let documentStore {
         store = documentStore
       } else {
-        let liveStore = try PlacesDocumentStore.live()
+        let fileManager = FileManager.default
+        let applicationSupportURL = try fileManager.url(
+          for: .applicationSupportDirectory,
+          in: .userDomainMask,
+          appropriateFor: nil,
+          create: true
+        )
+        let directoryURL =
+          applicationSupportURL
+          .appendingPathComponent(
+            Bundle.main.bundleIdentifier ?? "WeatherAtlas",
+            isDirectory: true
+          )
+          .appendingPathComponent("Places", isDirectory: true)
+        let liveStore = PlacesDocumentStore(
+          fileURL: directoryURL.appendingPathComponent(
+            PlacesDocumentStore.currentFileName
+          ),
+          fileManager: fileManager
+        )
         documentStore = liveStore
         store = liveStore
       }
@@ -828,7 +861,12 @@ final class SavedPlacesStore {
       try persist(candidate)
     }
     if insertedNewPlace, let savedPlace = place(id: savedID) {
-      enqueueNotification(for: .saved, place: savedPlace)
+      (pendingSavedPlaceNotifications.append(
+        SavedPlaceNotification(
+          change: (.saved),
+          placeName: (savedPlace).displayName
+        )
+      ))
     }
     return savedID
   }
@@ -867,7 +905,12 @@ final class SavedPlacesStore {
     if candidate != document {
       try persist(candidate)
     }
-    enqueueNotification(for: .removed, place: removedPlace)
+    (pendingSavedPlaceNotifications.append(
+      SavedPlaceNotification(
+        change: (.removed),
+        placeName: (removedPlace).displayName
+      )
+    ))
   }
 
   /// Changes only the user-owned custom name of one saved city.
@@ -934,20 +977,6 @@ final class SavedPlacesStore {
 
   // MARK: - Persistence Internals
 
-  /// Captures the display name only after persistence succeeds, ensuring a
-  /// failed save/delete never produces a false confirmation.
-  private func enqueueNotification(
-    for change: SavedPlaceNotification.Change,
-    place: SavedPlace
-  ) {
-    pendingSavedPlaceNotifications.append(
-      SavedPlaceNotification(
-        change: change,
-        placeName: place.displayName
-      )
-    )
-  }
-
   /// Makes memory reflect the document read back from disk, including any
   /// normalization performed by the document store.
   func persist(_ candidate: PlacesLibraryDocument) throws {
@@ -955,9 +984,7 @@ final class SavedPlacesStore {
       throw PlacesStoreError.unavailable(loadErrorDescription)
     }
     guard let documentStore else {
-      throw PlacesStoreError.unavailable(
-        "No document location is available."
-      )
+      throw PlacesStoreError.unavailable("No document location is available.")
     }
     document = try documentStore.saveAndReadBack(candidate)
   }

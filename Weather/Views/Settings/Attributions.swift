@@ -95,7 +95,13 @@ struct AttributionsView: View {
       LabeledContent {
         WeatherDataSourceMark(attribution: weatherAttribution)
       } label: {
-        attributionLabel("Data", systemImage: "cloud.sun")
+        (Label {
+          Text(("Data"))
+            .foregroundStyle(theme.colors.primaryText)
+        } icon: {
+          Image(systemName: ("cloud.sun"))
+            .foregroundStyle(theme.colors.dotSun)
+        })
       }
 
       if let legalPageURL = weatherAttribution?.legalPageURL {
@@ -134,7 +140,13 @@ struct AttributionsView: View {
           .foregroundStyle(theme.colors.secondaryText)
           .multilineTextAlignment(.trailing)
       } label: {
-        attributionLabel("Data", systemImage: dataSystemImage)
+        (Label {
+          Text(("Data"))
+            .foregroundStyle(theme.colors.primaryText)
+        } icon: {
+          Image(systemName: (dataSystemImage))
+            .foregroundStyle(theme.colors.dotSun)
+        })
       }
 
       if let legalURL {
@@ -160,19 +172,6 @@ struct AttributionsView: View {
     .listRowBackground(theme.colors.settingsRowFill)
   }
 
-  private func attributionLabel(
-    _ title: LocalizedStringKey,
-    systemImage: String
-  ) -> some View {
-    Label {
-      Text(title)
-        .foregroundStyle(theme.colors.primaryText)
-    } icon: {
-      Image(systemName: systemImage)
-        .foregroundStyle(theme.colors.dotSun)
-    }
-  }
-
   private func attributionLink(
     _ title: LocalizedStringKey,
     systemImage: String,
@@ -183,7 +182,13 @@ struct AttributionsView: View {
       openURL(url)
     } label: {
       HStack {
-        attributionLabel(title, systemImage: systemImage)
+        (Label {
+          Text((title))
+            .foregroundStyle(theme.colors.primaryText)
+        } icon: {
+          Image(systemName: (systemImage))
+            .foregroundStyle(theme.colors.dotSun)
+        })
         Spacer(minLength: 8)
         Text("View")
           .foregroundStyle(theme.colors.secondaryText)

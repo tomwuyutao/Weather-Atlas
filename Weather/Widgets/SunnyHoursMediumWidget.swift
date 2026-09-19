@@ -110,7 +110,19 @@ private struct WidgetDailySunnyHoursTimeline: View {
       currentDate: currentDate,
       showsCurrentTimeMarker: true,
       configuration: .appAndHome,
-      colors: sharedChartColors
+      colors: (SunnyHoursChartColors(
+        primary: ((widgetRenderingMode != .fullColor)
+          ? .primary
+          : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)).titleText),
+        secondary: ((widgetRenderingMode != .fullColor)
+          ? .secondary
+          : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)).secondaryText),
+        sun: timelineColor(for: .clear),
+        partlySunny: timelineColor(for: .partlySunny),
+        rain: timelineColor(for: .rain),
+        drizzle: timelineColor(for: .drizzle),
+        noSun: timelineColor(for: .cloudy)
+      ))
     )
   }
 
@@ -133,22 +145,6 @@ private struct WidgetDailySunnyHoursTimeline: View {
 
     return chartColor(
       for: tone, colors: (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)))
-  }
-
-  private var sharedChartColors: SunnyHoursChartColors {
-    SunnyHoursChartColors(
-      primary: ((widgetRenderingMode != .fullColor)
-        ? .primary
-        : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)).titleText),
-      secondary: ((widgetRenderingMode != .fullColor)
-        ? .secondary
-        : (AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)).secondaryText),
-      sun: timelineColor(for: .clear),
-      partlySunny: timelineColor(for: .partlySunny),
-      rain: timelineColor(for: .rain),
-      drizzle: timelineColor(for: .drizzle),
-      noSun: timelineColor(for: .cloudy)
-    )
   }
 
   /// Adapts exact persisted API conditions to the presentation-only shared
@@ -182,15 +178,6 @@ private struct WidgetDailySunnyHoursTimeline: View {
   }
 
   /// Neutral no-sun color shared by non-sunny chart slots.
-  private var noSunColor: Color {
-    if widgetRenderingMode != .fullColor {
-      return .primary.opacity(0.14)
-    }
-    return widgetNoSunTimelineColor(
-      colorScheme: colorScheme,
-      contrast: colorSchemeContrast
-    )
-  }
 
   /// WidgetKit may enforce monochrome/tinted rendering, where custom colors
   /// are unavailable. Preserve condition differences with distinct weights.
@@ -205,7 +192,24 @@ private struct WidgetDailySunnyHoursTimeline: View {
     case .drizzle:
       .primary.opacity(0.38)
     case .cloudy:
-      noSunColor
+      ({
+        if widgetRenderingMode != .fullColor {
+          return .primary.opacity(0.14)
+        }
+        return
+          ({ () -> Color in
+            switch (colorScheme, colorSchemeContrast) {
+            case (.dark, .increased):
+              ThemeColors.increasedContrastDark.noSunTimelineFill
+            case (.dark, _):
+              ThemeColors.dark.noSunTimelineFill
+            case (_, .increased):
+              ThemeColors.increasedContrastLight.noSunTimelineFill
+            default:
+              ThemeColors.light.noSunTimelineFill
+            }
+          }())
+      })()
     }
   }
 
@@ -225,10 +229,18 @@ private struct WidgetDailySunnyHoursTimeline: View {
     case .drizzle:
       colors.dotDrizzle
     case .cloudy:
-      widgetNoSunTimelineColor(
-        colorScheme: colorScheme,
-        contrast: colorSchemeContrast
-      )
+      ({ () -> Color in
+        switch (colorScheme, colorSchemeContrast) {
+        case (.dark, .increased):
+          ThemeColors.increasedContrastDark.noSunTimelineFill
+        case (.dark, _):
+          ThemeColors.dark.noSunTimelineFill
+        case (_, .increased):
+          ThemeColors.increasedContrastLight.noSunTimelineFill
+        default:
+          ThemeColors.light.noSunTimelineFill
+        }
+      }())
     }
   }
 }
@@ -286,29 +298,17 @@ func widgetSunnyHoursTotalText(
   guard favorableHourCount > 0 else {
     return widgetLocalizedString("No Sun")
   }
-  return SunnyHoursFormatting.hourCountLabel(
-    Double(favorableHourCount),
-    locale: locale
+  let hours = Double(favorableHourCount)
+  return String(
+    format: WidgetDataStore.localizedText(for: "%@ h"),
+    locale: locale,
+    hours.formatted(
+      .number
+        .grouping(.never)
+        .precision(.fractionLength(hours.rounded() == hours ? 0 : 1))
+        .locale(locale)
+    )
   )
-}
-
-/// Uses the same untinted cloudy/no-sun fill as the app's daily and ten-day
-/// timelines. Increase Contrast changes only this color, preserving the normal
-/// gray recipe and darkening it by the app's deliberately small amount.
-func widgetNoSunTimelineColor(
-  colorScheme: ColorScheme,
-  contrast: ColorSchemeContrast
-) -> Color {
-  switch (colorScheme, contrast) {
-  case (.dark, .increased):
-    ThemeColors.increasedContrastDark.noSunTimelineFill
-  case (.dark, _):
-    ThemeColors.dark.noSunTimelineFill
-  case (_, .increased):
-    ThemeColors.increasedContrastLight.noSunTimelineFill
-  default:
-    ThemeColors.light.noSunTimelineFill
-  }
 }
 
 #if DEBUG

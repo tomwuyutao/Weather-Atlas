@@ -393,28 +393,6 @@ struct ThemeColors {
   /// fully-sunny endpoint.
   static let sunnyHoursColorScaleMaximum = 10.0
 
-  /// Maps total sunny hours onto the shared quiet-to-vivid sunny ramp.
-  ///
-  /// Zero hours uses the plain surface fill. Positive values use the same
-  /// curved sunny-yellow opacity, reaching its strongest value at ten
-  /// hours. Increase Contrast changes the resolved sunny hue but deliberately
-  /// keeps this same alpha ramp and surface treatment.
-  func sunnyHoursColor(
-    for sunnyHours: Double,
-    colorScheme: ColorScheme
-  ) -> Color {
-    let fraction = min(
-      max(sunnyHours / Self.sunnyHoursColorScaleMaximum, 0),
-      1
-    )
-    guard fraction > 0 else {
-      return glassFill.opacity(colorScheme == .dark ? 0.34 : 0.56)
-    }
-
-    let curvedFraction = pow(fraction, 1.55)
-    return dotSun.opacity(0.16 + 0.79 * curvedFraction)
-  }
-
   /// Fully opaque Map-dot equivalent of `sunnyHoursColor(for:colorScheme:)`.
   ///
   /// MapKit draws dots over variable terrain, so applying alpha directly can
@@ -458,24 +436,6 @@ struct ThemeColors {
     case .drizzle:
       return dotDrizzle
     }
-  }
-
-  /// Returns a low-saturation canvas color derived from the same condition
-  /// tone as the matching weather symbol. Blending toward the active app
-  /// background preserves the palette in light, dark, and black appearances
-  /// without introducing screen-specific color constants.
-  func weatherBackgroundColor(
-    for tone: WeatherIconTone?,
-    symbolName: String? = nil
-  ) -> Color {
-    guard let tone else { return background }
-    // A condition tint is decorative. In Increase Contrast mode the plain
-    // canvas preserves the guaranteed text contrast of the resolved palette.
-    guard !usesIncreasedContrast else { return background }
-    return weatherIconColor(for: tone, symbolName: symbolName).interpolated(
-      with: background,
-      by: 0.78
-    )
   }
 
 }
@@ -663,24 +623,6 @@ struct WeatherIconStyleModifier: ViewModifier {
 // These surface modifiers replace translucency with opaque, outlined surfaces
 // only when Reduce Transparency is enabled. Increase Contrast is resolved
 // solely through the palette and never changes Liquid Glass presentation.
-extension View {
-  /// Replaces translucency with an opaque outlined surface when required.
-  /// This is a private building block used by the card modifier below, so each
-  /// screen gets the same fallback behavior without branching on preferences.
-  fileprivate func highLegibilityGlass<Shape: InsettableShape>(
-    theme: ThemeColors,
-    in shape: Shape
-  ) -> some View {
-    background(theme.glassFill, in: shape)
-      .overlay(
-        shape.stroke(
-          theme.primaryText.opacity(0.18),
-          lineWidth: 0.8
-        )
-      )
-  }
-}
-
 /// Translucent card surface shared by Detail View's report sections.
 /// The generic `InsettableShape` accepts rounded rectangles, capsules, and other
 /// SwiftUI shapes while preserving a matching clipped background and border.
@@ -701,10 +643,14 @@ private struct GlassCardModifier<Shape: InsettableShape>: ViewModifier {
   /// Applies the detail-card surface appropriate to the OS and transparency setting.
   func body(content: Content) -> some View {
     if reduceTransparency {
-      content.highLegibilityGlass(
-        theme: theme.colors,
-        in: shape
-      )
+      content
+        .background(theme.colors.glassFill, in: shape)
+        .overlay(
+          shape.stroke(
+            theme.colors.primaryText.opacity(0.18),
+            lineWidth: 0.8
+          )
+        )
     } else if #available(iOS 26.0, *) {
       // Liquid Glass is used only on the OS that provides it. Older iOS
       // versions receive a native material fallback in the final branch.
@@ -806,17 +752,23 @@ private struct AppContentColumnModifier: ViewModifier {
 /// Applies a muted, condition-derived canvas behind an entire weather report.
 /// A missing condition deliberately falls back to the normal app canvas rather
 /// than implying a weather state that the source did not provide.
-private struct WeatherConditionScreenBackgroundModifier: ViewModifier {
+struct WeatherConditionScreenBackgroundModifier: ViewModifier {
   @Environment(\.appTheme) private var theme
   let tone: WeatherIconTone?
   let symbolName: String?
 
   func body(content: Content) -> some View {
     content.background(
-      theme.colors.weatherBackgroundColor(
-        for: tone,
-        symbolName: symbolName
-      )
+      ({ () -> Color in
+        guard let tone else { return theme.colors.background }
+        guard !theme.colors.usesIncreasedContrast else {
+          return theme.colors.background
+        }
+        return theme.colors.weatherIconColor(
+          for: tone,
+          symbolName: symbolName
+        ).interpolated(with: theme.colors.background, by: 0.78)
+      }())
       .ignoresSafeArea()
     )
   }
@@ -867,21 +819,6 @@ extension View {
     modifier(
       AppContentColumnModifier(
         standardMaximumWidth: standardMaximumWidth
-      )
-    )
-  }
-
-  /// Uses the selected condition's muted semantic color as a report canvas.
-  /// This is paired with `weatherIconStyle(for:)` so the hero icon and
-  /// background always share one theme-defined weather vocabulary.
-  func weatherConditionScreenBackground(
-    for tone: WeatherIconTone?,
-    symbolName: String? = nil
-  ) -> some View {
-    modifier(
-      WeatherConditionScreenBackgroundModifier(
-        tone: tone,
-        symbolName: symbolName
       )
     )
   }

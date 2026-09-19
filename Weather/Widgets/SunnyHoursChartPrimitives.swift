@@ -283,23 +283,43 @@ struct SunnyHoursDiscreteCapsuleTimeline: View {
     slotCount: Int,
     spacing: CGFloat
   ) -> CGFloat {
-    func boundaryX(_ boundaryIndex: Int) -> CGFloat {
-      if boundaryIndex <= 0 { return 0 }
-      if boundaryIndex >= slotCount {
-        return CGFloat(slotCount) * capsuleWidth
-          + CGFloat(max(slotCount - 1, 0)) * spacing
-      }
-      return CGFloat(boundaryIndex) * capsuleWidth
-        + (CGFloat(boundaryIndex) - 0.5) * spacing
-    }
-
     let clamped = min(max(slotPosition, 0), Double(slotCount))
     let lower = Int(floor(clamped))
     let upper = Int(ceil(clamped))
-    guard lower != upper else { return boundaryX(lower) }
+    guard lower != upper else {
+      return
+        ({ (boundaryIndex: Int) -> CGFloat in
+          if boundaryIndex <= 0 { return 0 }
+          if boundaryIndex >= slotCount {
+            return CGFloat(slotCount) * capsuleWidth
+              + CGFloat(max(slotCount - 1, 0)) * spacing
+          }
+          return CGFloat(boundaryIndex) * capsuleWidth
+            + (CGFloat(boundaryIndex) - 0.5) * spacing
+        })(lower)
+    }
     let fraction = CGFloat(clamped - Double(lower))
-    let lowerX = boundaryX(lower)
-    return lowerX + (boundaryX(upper) - lowerX) * fraction
+    let lowerX =
+      ({ (boundaryIndex: Int) -> CGFloat in
+        if boundaryIndex <= 0 { return 0 }
+        if boundaryIndex >= slotCount {
+          return CGFloat(slotCount) * capsuleWidth
+            + CGFloat(max(slotCount - 1, 0)) * spacing
+        }
+        return CGFloat(boundaryIndex) * capsuleWidth
+          + (CGFloat(boundaryIndex) - 0.5) * spacing
+      })(lower)
+    let upperX =
+      ({ (boundaryIndex: Int) -> CGFloat in
+        if boundaryIndex <= 0 { return 0 }
+        if boundaryIndex >= slotCount {
+          return CGFloat(slotCount) * capsuleWidth
+            + CGFloat(max(slotCount - 1, 0)) * spacing
+        }
+        return CGFloat(boundaryIndex) * capsuleWidth
+          + (CGFloat(boundaryIndex) - 0.5) * spacing
+      })(upper)
+    return lowerX + (upperX - lowerX) * fraction
   }
 
   // MARK: - Layout Calculation

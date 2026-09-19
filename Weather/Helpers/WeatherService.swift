@@ -31,17 +31,6 @@ enum WeatherServiceError: LocalizedError {
     }
   }
 
-  /// Structured data issue retained by the repository and native-alert layer.
-  var dataIssue: WeatherDataIssue {
-    switch self {
-    case .requestFailed(_, let detail):
-      return .weatherRequestFailed(detail)
-    case .undefinedTimeZone:
-      return .missingTimeZone
-    case .missingForecastData:
-      return .missingForecastData
-    }
-  }
 }
 
 /// Thin WeatherKit adapter shared by the place-keyed forecast repository.
@@ -182,7 +171,26 @@ final class WeatherService {
       // Retry only errors that describe a temporary network path. WeatherKit
       // permission failures, malformed requests, and unknown permanent
       // service errors must reach the blank-state alert immediately.
-      guard isTransientWeatherRequestError(error) else { throw error }
+      guard
+        ({ (error: Error) in
+          guard let urlError = error as? URLError else { return false }
+          switch urlError.code {
+          case .timedOut,
+            .cannotFindHost,
+            .cannotConnectToHost,
+            .networkConnectionLost,
+            .dnsLookupFailed,
+            .notConnectedToInternet,
+            .internationalRoamingOff,
+            .callIsActive,
+            .dataNotAllowed,
+            .resourceUnavailable:
+            return true
+          default:
+            return false
+          }
+        })(error)
+      else { throw error }
       // Give a newly foregrounded app and its network path a brief moment
       // to recover before retrying the exact same WeatherKit request.
       // This suspension does not block the main actor. Propagating its
@@ -190,25 +198,6 @@ final class WeatherService {
       try await Task.sleep(for: .milliseconds(400))
       try Task.checkCancellation()
       return try await weatherKitService.weather(for: location)
-    }
-  }
-
-  private func isTransientWeatherRequestError(_ error: Error) -> Bool {
-    guard let urlError = error as? URLError else { return false }
-    switch urlError.code {
-    case .timedOut,
-      .cannotFindHost,
-      .cannotConnectToHost,
-      .networkConnectionLost,
-      .dnsLookupFailed,
-      .notConnectedToInternet,
-      .internationalRoamingOff,
-      .callIsActive,
-      .dataNotAllowed,
-      .resourceUnavailable:
-      return true
-    default:
-      return false
     }
   }
 
@@ -221,7 +210,29 @@ final class WeatherService {
     do {
       // Resolve a display-only city into coordinates/name metadata before
       // requesting WeatherKit. WeatherKit itself ultimately uses location.
-      let resolved = try await resolvedCityAndTimeZone(for: city)
+      let place = await resolvedPlace(for: city)
+      guard let timeZone = place?.timeZone else {
+        reportDeveloperWarning(
+          title: "Time Zone Missing",
+          message:
+            "No valid time zone was available for \(city.displayName) at \(city.latitude), \(city.longitude)."
+        )
+        throw WeatherServiceError.undefinedTimeZone(city: city.displayName)
+      }
+      let resolved = (
+        city: City(
+          id: city.id,
+          name: place?.name ?? "",
+          titleName: city.titleName,
+          country: place?.country ?? "",
+          countryISO2Code: city.countryISO2Code,
+          latitude: city.latitude,
+          longitude: city.longitude,
+          timeZoneIdentifier: timeZone.identifier,
+          catalogIdentifier: city.catalogIdentifier
+        ),
+        timeZone: timeZone
+      )
       let location = CLLocation(
         latitude: resolved.city.latitude,
         longitude: resolved.city.longitude

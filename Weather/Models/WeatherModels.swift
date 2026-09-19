@@ -331,7 +331,7 @@ nonisolated private struct NearestSunnySearchKey: Equatable, Sendable {
 /// One preloaded nearby city. The population-ranked candidate set stays stable
 /// while users compare forecast dates, then cached sunny-hour totals determine
 /// which cities outrank the active reference place on that selected date.
-private struct NearbySunnyCityCandidate {
+struct NearbySunnyCityCandidate {
   /// Resolved city identity used to retrieve its cached weather snapshot.
   let city: City
   /// Original catalog distance retained after the weather lookup completes.
@@ -582,7 +582,7 @@ final class WeatherModel {
 
   /// Population-ranked nearby candidates preloaded once for the current
   /// coordinate and radius; their weather is reused for every selected date.
-  private var nearbyCandidates: [NearbySunnyCityCandidate] = []
+  private(set) var nearbyCandidates: [NearbySunnyCityCandidate] = []
   /// Current-location forecast loading, independent of nearby discovery.
   private(set) var isRefreshingLocation = false
   /// Nearby discovery loading is separate so 25 candidate requests do not
@@ -602,7 +602,7 @@ final class WeatherModel {
   /// The active bounded candidate set centered on a non-current Detail View.
   /// Completed sets are also retained per origin below, so a nested route can
   /// replace this compatibility projection without erasing its parent's state.
-  private var placeNearbyCandidates: [NearbySunnyCityCandidate] = []
+  private(set) var placeNearbyCandidates: [NearbySunnyCityCandidate] = []
   /// Identifies the place whose coordinates and forecast define this search.
   private(set) var placeNearbySearchOriginID: City.ID?
   /// Place-detail loading and completion are independent of Your Location.
@@ -717,31 +717,6 @@ final class WeatherModel {
         return city
       }()
     )
-  }
-
-  // MARK: - Saved-Place Forecasts
-
-  /// Loads saved forecasts without requesting or reading current location.
-  func loadSavedWeather(forceRefresh: Bool = false) async {
-    // The model coordinates the operation; SavedPlacesWeatherStore owns fetching,
-    // caching, retry policy, and the resulting per-city weather snapshots.
-    await weatherStore.load(
-      cities: placesStore.allPlaces.map(\.city),
-      forceRefresh: forceRefresh
-    )
-
-    // A legacy saved row may have arrived before its authoritative IANA
-    // timezone was known. Keep that row visible while weather loads, then
-    // persist WeatherKit/Apple-resolved metadata when it is complete. This
-    // repairs the library in place without replacing a user alias or making
-    // a missing timezone a global Saved Places load error.
-    let resolvedCities = placesStore.allPlaces.compactMap { place in
-      weatherStore.weather(for: place.id)?.city
-    }.filter(PlacesLibraryValidator.isValidCity)
-    // `savePlaces` applies the same city validation at its persistence
-    // boundary, but commits all valid repaired metadata in one atomic write.
-    // This avoids a read-back transaction for every saved city.
-    _ = try? placesStore.savePlaces(resolvedCities)
   }
 
   // MARK: - Home Refresh Workflow
@@ -878,7 +853,16 @@ final class WeatherModel {
       roundedLatitude: (coordinate.latitude * 1_000).rounded() / 1_000,
       roundedLongitude: (coordinate.longitude * 1_000).rounded() / 1_000
     )
-    if !forceRefresh, canReuseNearbySearch(for: key) {
+    let nearbySearchAge = lastSearchCompletedAt.map {
+      Date.now.timeIntervalSince($0)
+    }
+    if !forceRefresh,
+      key == lastSearchKey,
+      locationWeather != nil,
+      let nearbySearchAge,
+      nearbySearchAge >= 0,
+      nearbySearchAge < Self.nearbySearchTimeToLive
+    {
       #if DEBUG
         debugLog("reused the recent completed search")
       #endif
@@ -925,8 +909,18 @@ final class WeatherModel {
       // Candidate choice uses only population inside the fixed 200 km
       // radius; actual weather decides which of those candidates are
       // recommended.
-      let candidates = try await loadNearbyCandidates(
-        centeredAt: coordinate
+      let sourceCandidates = try await citiesCatalog.mostPopulousCities(
+        centeredAt: coordinate,
+        withinKilometers: Self.nearbySearchRadius,
+        limit: max(
+          Self.nearbyCandidateLimit,
+          FindSunCitySamplingPolicy.sourceCandidateLimit
+        )
+      )
+      let candidates = CitiesCatalog.spatiallyDistinct(
+        sourceCandidates,
+        resultLimit: Self.nearbyCandidateLimit,
+        clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
       )
       #if DEBUG
         debugLog("catalog returned \(candidates.count) candidates")
@@ -948,7 +942,33 @@ final class WeatherModel {
         (
           candidate: candidate,
           city: {
-            let catalogCity = makeCatalogCity(from: candidate.city)
+            let record = candidate.city
+            let catalogCity = City(
+              id: ({ (namespace: String, value: String) in
+                var bytes = Array(
+                  SHA256.hash(
+                    data: Data("weather-atlas-\(namespace):\(value)".utf8)
+                  ).prefix(16)
+                )
+                bytes[6] = (bytes[6] & 0x0F) | 0x50
+                bytes[8] = (bytes[8] & 0x3F) | 0x80
+                return UUID(
+                  uuid: (
+                    bytes[0], bytes[1], bytes[2], bytes[3],
+                    bytes[4], bytes[5], bytes[6], bytes[7],
+                    bytes[8], bytes[9], bytes[10], bytes[11],
+                    bytes[12], bytes[13], bytes[14], bytes[15]
+                  )
+                )
+              })("world-city", record.id),
+              name: record.name,
+              country: record.countryName,
+              countryISO2Code: record.isoCountryCode,
+              latitude: record.latitude,
+              longitude: record.longitude,
+              timeZoneIdentifier: record.timeZoneIdentifier,
+              catalogIdentifier: record.id
+            )
             guard let savedID = placesStore.savedPlaceID(matching: catalogCity),
               let savedCity = placesStore.place(id: savedID)?.city
             else {
@@ -1141,8 +1161,18 @@ final class WeatherModel {
     }
 
     do {
-      let candidates = try await loadNearbyCandidates(
-        centeredAt: coordinate
+      let sourceCandidates = try await citiesCatalog.mostPopulousCities(
+        centeredAt: coordinate,
+        withinKilometers: Self.nearbySearchRadius,
+        limit: max(
+          Self.nearbyCandidateLimit,
+          FindSunCitySamplingPolicy.sourceCandidateLimit
+        )
+      )
+      let candidates = CitiesCatalog.spatiallyDistinct(
+        sourceCandidates,
+        resultLimit: Self.nearbyCandidateLimit,
+        clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
       )
       guard !Task.isCancelled,
         placeNearbyRefreshID == generation,
@@ -1153,7 +1183,33 @@ final class WeatherModel {
         (
           candidate: candidate,
           city: {
-            let catalogCity = makeCatalogCity(from: candidate.city)
+            let record = candidate.city
+            let catalogCity = City(
+              id: ({ (namespace: String, value: String) in
+                var bytes = Array(
+                  SHA256.hash(
+                    data: Data("weather-atlas-\(namespace):\(value)".utf8)
+                  ).prefix(16)
+                )
+                bytes[6] = (bytes[6] & 0x0F) | 0x50
+                bytes[8] = (bytes[8] & 0x3F) | 0x80
+                return UUID(
+                  uuid: (
+                    bytes[0], bytes[1], bytes[2], bytes[3],
+                    bytes[4], bytes[5], bytes[6], bytes[7],
+                    bytes[8], bytes[9], bytes[10], bytes[11],
+                    bytes[12], bytes[13], bytes[14], bytes[15]
+                  )
+                )
+              })("world-city", record.id),
+              name: record.name,
+              country: record.countryName,
+              countryISO2Code: record.isoCountryCode,
+              latitude: record.latitude,
+              longitude: record.longitude,
+              timeZoneIdentifier: record.timeZoneIdentifier,
+              catalogIdentifier: record.id
+            )
             guard let savedID = placesStore.savedPlaceID(matching: catalogCity),
               let savedCity = placesStore.place(id: savedID)?.city
             else {
@@ -1256,23 +1312,6 @@ final class WeatherModel {
     }
   }
 
-  // MARK: - Nearby-Sun Candidate Selection
-
-  /// Builds the one population-led, geographically distinct candidate set used
-  /// by Nearby Sunnier Places. A larger source pool backfills metropolitan
-  /// clusters, while WeatherKit still receives no more than 25 requests.
-  private func loadNearbyCandidates(
-    centeredAt coordinate: CLLocationCoordinate2D
-  ) async throws -> [CatalogCityDistanceCandidate] {
-    try await citiesCatalog.mostPopulousSpatiallyDistinctCities(
-      centeredAt: coordinate,
-      withinKilometers: Self.nearbySearchRadius,
-      resultLimit: Self.nearbyCandidateLimit,
-      sourceCandidateLimit: FindSunCitySamplingPolicy.sourceCandidateLimit,
-      clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
-    )
-  }
-
   // MARK: - Derived Recommendations
 
   /// Builds one recommendation using the fixed app-wide sunny-hours rule:
@@ -1287,46 +1326,8 @@ final class WeatherModel {
     )
   }
 
-  /// Builds recommendations for every preloaded nearby candidate with weather
-  /// for this date.
-  /// The optional `limit` is
-  /// applied only after the shared sunny-hours ranking, so a Home preview can
-  /// safely request its top three. If current-location weather is unavailable,
-  /// the comparison uses zero sunny hours.
-  func nearbyRecommendations(
-    on selectedDate: Date,
-    locale: Locale,
-    limit: Int? = nil
-  ) -> [NearestSunnyPlaceResult] {
-    rankedNearbyRecommendations(
-      from: nearbyCandidates,
-      comparedWith: locationWeather,
-      on: selectedDate,
-      locale: locale,
-      limit: limit
-    )
-  }
-
-  /// Ranks the active place-detail candidate set against that place's own
-  /// forecast. A stale set from another pushed Detail View is never exposed.
-  func nearbyRecommendations(
-    around origin: City,
-    on selectedDate: Date,
-    locale: Locale,
-    limit: Int? = nil
-  ) -> [NearestSunnyPlaceResult] {
-    guard placeNearbySearchOriginID == origin.id else { return [] }
-    return rankedNearbyRecommendations(
-      from: placeNearbyCandidates,
-      comparedWith: weatherStore.weather(for: origin.id),
-      on: selectedDate,
-      locale: locale,
-      limit: limit
-    )
-  }
-
   /// Applies the common sunny-hours comparison and ranking to either origin.
-  private func rankedNearbyRecommendations(
+  func rankedNearbyRecommendations(
     from nearbyCandidates: [NearbySunnyCityCandidate],
     comparedWith originWeather: CityWeather?,
     on selectedDate: Date,
@@ -1403,23 +1404,6 @@ final class WeatherModel {
   }
 
   // MARK: - Routing and Persistence Bridges
-
-  /// City recents are intentionally limited to unsaved, non-local places.
-  /// Re-evaluating this filter at display time makes an existing recent row
-  /// disappear immediately when it is saved or becomes the current location;
-  /// the lifecycle synchronization below then removes it from storage.
-  var recentCitySuggestions: [City] {
-    recentSearches.cities.filter { city in
-      placesStore.savedPlaceID(matching: city) == nil
-        && {
-          guard let currentLocationPlaceCity else { return true }
-          return !CurrentLocationCityMatcher.matches(
-            city,
-            currentLocation: currentLocationPlaceCity
-          )
-        }()
-    }
-  }
 
   /// Records a city information-card or full-detail access only while that
   /// place is eligible for the City Recent section.
@@ -1508,7 +1492,34 @@ final class WeatherModel {
   /// network place lookup is pending or unavailable.
   func starterCities() async throws -> [City] {
     let records = try await citiesCatalog.starterCities()
-    let cities = records.map(makeCatalogCity)
+    let cities = records.map { record in
+      City(
+        id: ({ (namespace: String, value: String) in
+          var bytes = Array(
+            SHA256.hash(
+              data: Data("weather-atlas-\(namespace):\(value)".utf8)
+            ).prefix(16)
+          )
+          bytes[6] = (bytes[6] & 0x0F) | 0x50
+          bytes[8] = (bytes[8] & 0x3F) | 0x80
+          return UUID(
+            uuid: (
+              bytes[0], bytes[1], bytes[2], bytes[3],
+              bytes[4], bytes[5], bytes[6], bytes[7],
+              bytes[8], bytes[9], bytes[10], bytes[11],
+              bytes[12], bytes[13], bytes[14], bytes[15]
+            )
+          )
+        })("world-city", record.id),
+        name: record.name,
+        country: record.countryName,
+        countryISO2Code: record.isoCountryCode,
+        latitude: record.latitude,
+        longitude: record.longitude,
+        timeZoneIdentifier: record.timeZoneIdentifier,
+        catalogIdentifier: record.id
+      )
+    }
     guard cities.allSatisfy(PlacesLibraryValidator.isValidCity) else {
       throw WeatherDataIssue.unresolvedPlace("starter places")
     }
@@ -1543,8 +1554,22 @@ final class WeatherModel {
     // The weather store discards every snapshot outside this explicit scope.
     weatherStore.retainWeather(
       for: retainedIDs,
-      preservingRestoredWeather:
-        shouldPreserveRestoredCurrentLocationWeather
+      preservingRestoredWeather: ({
+        guard homeLocation == nil,
+          locationCity == nil,
+          locationProvider.coordinate == nil
+        else {
+          return false
+        }
+
+        switch locationProvider.status {
+        case .idle, .checkingAvailability, .requestingAuthorization, .locating:
+          return true
+        case .resolvingPlace, .ready, .readyWithoutMetadata, .denied,
+          .restricted, .servicesDisabled, .failed:
+          return false
+        }
+      })()
     )
   }
 
@@ -1552,22 +1577,6 @@ final class WeatherModel {
   /// cannot yet reconstruct the deterministic current-location UUID. Preserve
   /// restored cache entries through that short identity-resolution window; a
   /// resolved coordinate or terminal location state resumes ordinary trimming.
-  private var shouldPreserveRestoredCurrentLocationWeather: Bool {
-    guard homeLocation == nil,
-      locationCity == nil,
-      locationProvider.coordinate == nil
-    else {
-      return false
-    }
-
-    switch locationProvider.status {
-    case .idle, .checkingAvailability, .requestingAuthorization, .locating:
-      return true
-    case .resolvingPlace, .ready, .readyWithoutMetadata, .denied,
-      .restricted, .servicesDisabled, .failed:
-      return false
-    }
-  }
 
   /// Invalidates the completed key when an explicit app reset occurs.
   func resetLocation() {
@@ -1597,7 +1606,13 @@ final class WeatherModel {
     let retainedDefaultLocation: WidgetDataCity?
     let canRetainCurrentLocationWhileRefreshing =
       !isUsingHomeLocation
-      && locationProvider.hasLocationAuthorization
+      && ({ () -> Bool in
+        switch locationProvider.manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: return true
+        case .notDetermined, .denied, .restricted: return false
+        @unknown default: return false
+        }
+      }())
       && [
         LocationProviderStatus.idle,
         .checkingAvailability,
@@ -1628,12 +1643,36 @@ final class WeatherModel {
     WidgetDataStore.save(
       WidgetDataCatalog(
         cities: savedPlaces.map {
-          widgetCity(
-            for: $0,
-            locale: locale,
-            legacyIdentifiers: legacyIdentifiersByPlaceID[$0.id]
-              ?? []
-          )
+          ({ (place: SavedPlace, locale: Locale, legacyIdentifiers: [String]) in
+            // Prefer a timezone learned from the actual weather response; fall back
+            // to the saved city metadata when weather has not loaded yet.
+            let city = place.city
+            let country = city.country.trimmingCharacters(
+              in: .whitespacesAndNewlines
+            )
+            let timeZoneID =
+              weatherStore.weather(for: place.id)?
+              .timeZone.identifier
+              ?? city.timeZoneIdentifier
+            let identifier = "saved-place:" + place.id.uuidString.lowercased()
+
+            // Weather remains widget-owned; this catalog hand-off carries identity
+            // and location metadata only.
+            return WidgetDataCity(
+              id: identifier,
+              legacyIdentifiers: legacyIdentifiers,
+              cityName: place.localizedDisplayName(locale: locale),
+              configurationSubtitle: country.isEmpty ? nil : country,
+              timeZoneIdentifier: timeZoneID,
+              latitude: city.latitude,
+              longitude: city.longitude,
+              sunnyWindowDays: nil,
+              dataIssue: nil
+            )
+          })(
+            $0, locale,
+            legacyIdentifiersByPlaceID[$0.id]
+              ?? [])
         },
         appLanguageIdentifier: locale.identifier,
         currentLocation: widgetCurrentLocation(locale: locale)
@@ -1682,22 +1721,6 @@ final class WeatherModel {
     inFlightPlaceNearbyIDs = []
     placeNearbySnapshotsByOriginID = [:]
     placeNearbySnapshotRecency = []
-  }
-
-  /// Whether the previous same-coordinate search is both complete and fresh.
-  /// Negative ages reject timestamps from a future wall clock.
-  private func canReuseNearbySearch(
-    for key: NearestSunnySearchKey,
-    now: Date = .now
-  ) -> Bool {
-    guard key == lastSearchKey,
-      locationWeather != nil,
-      let completedAt = lastSearchCompletedAt
-    else {
-      return false
-    }
-    let age = now.timeIntervalSince(completedAt)
-    return age >= 0 && age < Self.nearbySearchTimeToLive
   }
 
   // MARK: Place-Detail Nearby Snapshot Cache
@@ -1823,10 +1846,27 @@ final class WeatherModel {
       coordinate.longitude
     )
     return City(
-      id: Self.stableCityID(
-        namespace: "current-location",
-        value: coordinateKey
-      ),
+      id: ({ (namespace: String, value: String) in
+        // Hash a namespaced source key so the same logical city receives the
+        // same UUID across launches without persisting a separate mapping.
+        var bytes = Array(
+          SHA256.hash(
+            data: Data("weather-atlas-\(namespace):\(value)".utf8)
+          ).prefix(16)
+        )
+        // Set RFC 4122 version/variant bits after taking 16 SHA-256 bytes. This
+        // makes the deterministic identifier look and validate like a UUID v5.
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        return UUID(
+          uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]
+          )
+        )
+      })("current-location", coordinateKey),
       // Missing locality/country stay empty. In particular, do not store
       // the presentation label "Current Location" as canonical place data.
       name: metadata?.displayName?.trimmingCharacters(
@@ -1845,54 +1885,8 @@ final class WeatherModel {
     )
   }
 
-  private func makeCatalogCity(from record: CatalogCity) -> City {
-    // Catalog records do not need reverse geocoding; their bundled name,
-    // country, and stable record ID are already the canonical source data.
-    City(
-      id: Self.stableCityID(namespace: "world-city", value: record.id),
-      name: record.name,
-      country: record.countryName,
-      countryISO2Code: record.isoCountryCode,
-      latitude: record.latitude,
-      longitude: record.longitude,
-      timeZoneIdentifier: record.timeZoneIdentifier,
-      catalogIdentifier: record.id
-    )
-  }
-
   /// Creates the lightweight identity contract whose weather remains owned by
   /// the widget extension.
-  private func widgetCity(
-    for place: SavedPlace,
-    locale: Locale,
-    legacyIdentifiers: [String]
-  ) -> WidgetDataCity {
-    // Prefer a timezone learned from the actual weather response; fall back
-    // to the saved city metadata when weather has not loaded yet.
-    let city = place.city
-    let country = city.country.trimmingCharacters(
-      in: .whitespacesAndNewlines
-    )
-    let timeZoneID =
-      weatherStore.weather(for: place.id)?
-      .timeZone.identifier
-      ?? city.timeZoneIdentifier
-    let identifier = "saved-place:" + place.id.uuidString.lowercased()
-
-    // Weather remains widget-owned; this catalog hand-off carries identity
-    // and location metadata only.
-    return WidgetDataCity(
-      id: identifier,
-      legacyIdentifiers: legacyIdentifiers,
-      cityName: place.localizedDisplayName(locale: locale),
-      configurationSubtitle: country.isEmpty ? nil : country,
-      timeZoneIdentifier: timeZoneID,
-      latitude: city.latitude,
-      longitude: city.longitude,
-      sunnyWindowDays: nil,
-      dataIssue: nil
-    )
-  }
 
   /// Assigns every pre-UUID widget identifier to one durable Saved Place.
   ///
@@ -1929,34 +1923,6 @@ final class WeatherModel {
     )
     let previousCities = previousCatalog?.cities ?? []
 
-    /// Valid historic aliases exclude every canonical UUID identifier,
-    /// including one accidentally propagated by an older buggy catalog.
-    func legacyAliases(in city: WidgetDataCity) -> [String] {
-      var seen: Set<String> = []
-      var knownIdentifiers: Set<String> = []
-      return ([city.id] + (city.legacyIdentifiers ?? [])).filter {
-        !($0.isEmpty) && knownIdentifiers.insert($0).inserted
-      }.filter { identifier in
-        !identifier.isEmpty
-          && identifier != WidgetDataStore.currentLocationIdentifier
-          && WidgetDataStore.savedPlaceID(from: identifier) == nil
-          && seen.insert(identifier).inserted
-      }
-    }
-
-    /// Reconstructs the alias represented by a catalog row's own metadata.
-    /// This distinguishes the original owner from a later row that merely
-    /// inherited the alias through the propagation bug.
-    func metadataLegacyIdentifier(for city: WidgetDataCity) -> String? {
-      guard let latitude = city.latitude,
-        let longitude = city.longitude
-      else {
-        return nil
-      }
-      return
-        "\(city.configurationSubtitle ?? "")|\(String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), latitude))|\(String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), longitude))"
-    }
-
     // Collect stable claims first rather than resolving in current library
     // order. This makes a drag reorder unable to change alias ownership.
     var aliasesPreviouslyOwnedByCanonicalRows: Set<String> = []
@@ -1970,8 +1936,30 @@ final class WeatherModel {
       else {
         continue
       }
-      let metadataIdentifier = metadataLegacyIdentifier(for: previousCity)
-      for alias in legacyAliases(in: previousCity) {
+      let metadataIdentifier =
+        ({ (city: WidgetDataCity) -> String? in
+          guard let latitude = city.latitude,
+            let longitude = city.longitude
+          else {
+            return nil
+          }
+          return
+            "\(city.configurationSubtitle ?? "")|\(String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), latitude))|\(String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), longitude))"
+        })(previousCity)
+      for alias
+        in ({ (city: WidgetDataCity) -> [String] in
+          var seen: Set<String> = []
+          var knownIdentifiers: Set<String> = []
+          return ([city.id] + (city.legacyIdentifiers ?? [])).filter {
+            !$0.isEmpty && knownIdentifiers.insert($0).inserted
+          }.filter { identifier in
+            !identifier.isEmpty
+              && identifier != WidgetDataStore.currentLocationIdentifier
+              && WidgetDataStore.savedPlaceID(from: identifier) == nil
+              && seen.insert(identifier).inserted
+          }
+        })(previousCity)
+      {
         aliasesPreviouslyOwnedByCanonicalRows.insert(alias)
         guard placeIDs.contains(previousPlaceID) else { continue }
         priorCanonicalClaims[alias, default: []].append(
@@ -2092,7 +2080,19 @@ final class WeatherModel {
       else {
         continue
       }
-      for alias in legacyAliases(in: previousCity)
+      for alias
+        in ({ (city: WidgetDataCity) -> [String] in
+          var seen: Set<String> = []
+          var knownIdentifiers: Set<String> = []
+          return ([city.id] + (city.legacyIdentifiers ?? [])).filter {
+            !$0.isEmpty && knownIdentifiers.insert($0).inserted
+          }.filter { identifier in
+            !identifier.isEmpty
+              && identifier != WidgetDataStore.currentLocationIdentifier
+              && WidgetDataStore.savedPlaceID(from: identifier) == nil
+              && seen.insert(identifier).inserted
+          }
+        })(previousCity)
       where ownerByAlias[alias] == nil {
         ownerByAlias[alias] = owner
       }
@@ -2122,7 +2122,19 @@ final class WeatherModel {
         aliases.append(currentAlias)
       }
       for previousCity in previousCities {
-        for alias in legacyAliases(in: previousCity)
+        for alias
+          in ({ (city: WidgetDataCity) -> [String] in
+            var seen: Set<String> = []
+            var knownIdentifiers: Set<String> = []
+            return ([city.id] + (city.legacyIdentifiers ?? [])).filter {
+              !$0.isEmpty && knownIdentifiers.insert($0).inserted
+            }.filter { identifier in
+              !identifier.isEmpty
+                && identifier != WidgetDataStore.currentLocationIdentifier
+                && WidgetDataStore.savedPlaceID(from: identifier) == nil
+                && seen.insert(identifier).inserted
+            }
+          })(previousCity)
         where ownerByAlias[alias] == place.id
           && seen.insert(alias).inserted
         {
@@ -2189,29 +2201,5 @@ final class WeatherModel {
   }
 
   /// Derives a reproducible UUID from a namespaced source identity.
-  nonisolated private static func stableCityID(
-    namespace: String,
-    value: String
-  ) -> UUID {
-    // Hash a namespaced source key so the same logical city receives the
-    // same UUID across launches without persisting a separate mapping.
-    var bytes = Array(
-      SHA256.hash(
-        data: Data("weather-atlas-\(namespace):\(value)".utf8)
-      ).prefix(16)
-    )
-    // Set RFC 4122 version/variant bits after taking 16 SHA-256 bytes. This
-    // makes the deterministic identifier look and validate like a UUID v5.
-    bytes[6] = (bytes[6] & 0x0F) | 0x50
-    bytes[8] = (bytes[8] & 0x3F) | 0x80
-    return UUID(
-      uuid: (
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5], bytes[6], bytes[7],
-        bytes[8], bytes[9], bytes[10], bytes[11],
-        bytes[12], bytes[13], bytes[14], bytes[15]
-      )
-    )
-  }
 
 }

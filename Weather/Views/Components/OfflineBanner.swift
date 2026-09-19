@@ -65,11 +65,24 @@ struct OfflineBannerContent: View {
           .fontWeight(.regular)
           .lineLimit(1)
 
-        Text(lastUpdatedText)
-          .font(.caption)
-          .foregroundStyle(theme.colors.secondaryText)
-          .lineLimit(1)
-          .minimumScaleFactor(0.8)
+        Text(
+          ({
+            let time =
+              lastUpdated?.formatted(
+                Date.FormatStyle(date: .omitted, time: .shortened)
+                  .locale(locale)
+              ) ?? "—"
+            return String(
+              format: localizedString("Last updated: %@", locale: locale),
+              locale: locale,
+              time
+            )
+          })()
+        )
+        .font(.caption)
+        .foregroundStyle(theme.colors.secondaryText)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
       }
 
       Spacer(minLength: 0)
@@ -85,16 +98,4 @@ struct OfflineBannerContent: View {
     .frame(minHeight: OfflineBannerLayout.height)
   }
 
-  private var lastUpdatedText: String {
-    let time =
-      lastUpdated?.formatted(
-        Date.FormatStyle(date: .omitted, time: .shortened)
-          .locale(locale)
-      ) ?? "—"
-    return String(
-      format: localizedString("Last updated: %@", locale: locale),
-      locale: locale,
-      time
-    )
-  }
 }

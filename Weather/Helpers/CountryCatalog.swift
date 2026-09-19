@@ -174,20 +174,6 @@ struct CountryCityCatalogEntry: Identifiable, Hashable {
       }.joined()
   }
 
-  /// Converts the catalog row into the app's persistable city model.
-  var appCity: City {
-    City(
-      id: id,
-      name: city,
-      country: country,
-      countryISO2Code: iso2,
-      latitude: latitude,
-      longitude: longitude,
-      timeZoneIdentifier: timeZoneIdentifier,
-      catalogIdentifier: catalogIdentifier
-    )
-  }
-
   /// Mirrors Saved Places' city-scale duplicate rule so two near-identical
   /// source rows cannot later collapse onto one saved UUID only after Map has
   /// already accepted both as distinct candidates.
@@ -300,7 +286,15 @@ enum CountryCityCatalog {
   /// A result is returned only when the label is unambiguous across every
   /// language bundled by Weather Atlas.
   static func countryISO2Code(matchingCountryName countryName: String) -> String? {
-    let normalizedName = normalizedCountryName(countryName)
+    let normalizedName =
+      ((countryName).trimmingCharacters(in: .whitespacesAndNewlines).folding(
+        options: [
+          .caseInsensitive,
+          .diacriticInsensitive,
+          .widthInsensitive,
+        ],
+        locale: Locale(identifier: "en_US_POSIX")
+      ))
     guard !normalizedName.isEmpty else { return nil }
 
     let supportedLocales = [
@@ -310,44 +304,31 @@ enum CountryCityCatalog {
     let matches = Set(
       catalog.countriesByCode.values.compactMap {
         country -> String? in
-        if normalizedCountryName(country.englishName) == normalizedName {
+        if ((country.englishName).trimmingCharacters(in: .whitespacesAndNewlines).folding(
+          options: [
+            .caseInsensitive,
+            .diacriticInsensitive,
+            .widthInsensitive,
+          ],
+          locale: Locale(identifier: "en_US_POSIX")
+        )) == normalizedName {
           return country.iso2
         }
         let hasLocalizedMatch = supportedLocales.contains { locale in
-          normalizedCountryName(country.localizedName(locale: locale))
+          ((country.localizedName(locale: locale)).trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(
+              options: [
+                .caseInsensitive,
+                .diacriticInsensitive,
+                .widthInsensitive,
+              ],
+              locale: Locale(identifier: "en_US_POSIX")
+            ))
             == normalizedName
         }
         return hasLocalizedMatch ? country.iso2 : nil
       })
     return matches.count == 1 ? matches.first : nil
-  }
-
-  private static func normalizedCountryName(_ value: String) -> String {
-    value.trimmingCharacters(in: .whitespacesAndNewlines).folding(
-      options: [
-        .caseInsensitive,
-        .diacriticInsensitive,
-        .widthInsensitive,
-      ],
-      locale: Locale(identifier: "en_US_POSIX")
-    )
-  }
-
-  /// Returns a timezone only when every validated city in the factual bundled
-  /// country catalog uses the same IANA identifier. This is not a nearest-city
-  /// or coordinate guess: it merely lets another catalog with no timezone
-  /// column reuse an unambiguous country-wide source fact (for example, GB).
-  /// Countries spanning more than one zone intentionally return `nil` so
-  /// WeatherService can resolve the exact coordinate through its local
-  /// time-zone boundary database.
-  static func unambiguousTimeZoneIdentifier(forISO2 iso2: String) -> String? {
-    let identifiers = Set(
-      catalog.countriesByCode[iso2.uppercased()]?.cities.map(
-        \.timeZoneIdentifier
-      ) ?? []
-    )
-    guard identifiers.count == 1 else { return nil }
-    return identifiers.first
   }
 
   // MARK: - Candidate Sampling
@@ -412,7 +393,18 @@ enum CountryCityCatalog {
       selected.append(candidate)
       if selected.count == resultLimit { break }
     }
-    return selected.map(\.appCity)
+    return selected.map { entry in
+      City(
+        id: entry.id,
+        name: entry.city,
+        country: entry.country,
+        countryISO2Code: entry.iso2,
+        latitude: entry.latitude,
+        longitude: entry.longitude,
+        timeZoneIdentifier: entry.timeZoneIdentifier,
+        catalogIdentifier: entry.catalogIdentifier
+      )
+    }
   }
 
   // MARK: - Continent Membership
@@ -537,7 +529,20 @@ enum CountryCityCatalog {
           )
           return value.isEmpty ? nil : value
         }(),
-        let iso2 = validISO2(fields[2]),
+        let iso2 =
+          ({ (value: String) -> String? in
+            let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+              .uppercased()
+            guard !value.isEmpty,
+              value.unicodeScalars.count == 2,
+              value.unicodeScalars.allSatisfy({
+                (65...90).contains(Int($0.value))
+              })
+            else {
+              return nil
+            }
+            return value
+          })(fields[2]),
         let latitude = { () -> Double? in
           guard let value = Double(fields[3]),
             value.isFinite,
@@ -556,8 +561,31 @@ enum CountryCityCatalog {
           }
           return value
         }(),
-        let timeZoneIdentifier = validTimeZoneIdentifier(fields[5]),
-        let population = catalogPopulation(populationValue)
+        let timeZoneIdentifier =
+          ({ (value: String) -> String? in
+            let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty,
+              TimeZone(identifier: value) != nil
+            else {
+              return nil
+            }
+            return value
+          })(fields[5]),
+        let population =
+          ({ (value: String) -> Int? in
+            if let population = Int(value), population >= 0 {
+              return population
+            }
+            guard let value = Double(value),
+              value.isFinite,
+              value >= 0,
+              value.rounded(.towardZero) == value,
+              value < Double(Int.max)
+            else {
+              return nil
+            }
+            return Int(value)
+          })(populationValue)
       else {
         invalidRowCount += 1
         DeveloperDiagnostics.show(
@@ -632,45 +660,6 @@ enum CountryCityCatalog {
   }()
 
   // MARK: - CSV Field Validation
-
-  private static func validISO2(_ value: String) -> String? {
-    let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
-      .uppercased()
-    guard !value.isEmpty,
-      value.unicodeScalars.count == 2,
-      value.unicodeScalars.allSatisfy({
-        (65...90).contains(Int($0.value))
-      })
-    else {
-      return nil
-    }
-    return value
-  }
-
-  private static func validTimeZoneIdentifier(_ value: String) -> String? {
-    let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !value.isEmpty,
-      TimeZone(identifier: value) != nil
-    else {
-      return nil
-    }
-    return value
-  }
-
-  private static func catalogPopulation(_ value: String) -> Int? {
-    if let population = Int(value), population >= 0 {
-      return population
-    }
-    guard let value = Double(value),
-      value.isFinite,
-      value >= 0,
-      value.rounded(.towardZero) == value,
-      value < Double(Int.max)
-    else {
-      return nil
-    }
-    return Int(value)
-  }
 
   // MARK: - CSV Parsing
 

@@ -74,7 +74,47 @@ struct FindSunListView: View {
   #Preview("Find Sun List", traits: .fixedLayout(width: 390, height: 700)) {
     NavigationStack {
       FindSunListView(
-        results: MapSunResultsPreviewData.results,
+        results: [
+          ("Rome", "Italy", 12.0),
+          ("Naples", "Italy", 10.0),
+          ("Palermo", "Italy", 9.0),
+          ("Bari", "Italy", 8.0),
+          ("San Valentino in Abruzzo Citeriore", "Italy", 7.0),
+        ].map { name, country, sunnyHours in
+          let city = City(
+            name: name,
+            country: country,
+            latitude: 41.9,
+            longitude: 12.5,
+            timeZoneIdentifier: "Europe/Rome"
+          )
+          let forecast = DailyForecast(
+            date: Date(timeIntervalSince1970: 1_786_233_600),
+            dailyLow: 18,
+            dailyHigh: 30,
+            symbolName: "sun.max.fill",
+            condition: AppWeatherCondition(rawValue: "clear"),
+            hourlyForecasts: [],
+            cloudCover: 0.1,
+            precipitationChance: 0,
+            uvIndex: 7,
+            sunrise: nil,
+            sunset: nil
+          )
+          let weather = CityWeather(
+            city: city,
+            dailyForecasts: [forecast],
+            timeZone: TimeZone(identifier: "Europe/Rome")!
+          )
+          return MapSunSearchResult(
+            recommendation: PlaceRecommendation(
+              cityWeather: weather,
+              symbolName: forecast.symbolName,
+              condition: forecast.condition,
+              sunnyHourCount: sunnyHours
+            )
+          )
+        },
         title: "Italy"
       )
       .environment(NetworkConnectivity())

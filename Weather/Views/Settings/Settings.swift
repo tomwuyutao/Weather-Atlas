@@ -67,7 +67,21 @@ struct SettingsView: View {
           }
         }
         .navigationDestination(item: $destination) { destination in
-          destinationView(destination)
+          switch destination {
+          case .units:
+            unitsForm
+              .navigationTitle("Units")
+          case .language:
+            languageForm
+              .navigationTitle("Language")
+          case .theme:
+            themeForm
+              .navigationTitle("Theme")
+          case .attributions:
+            AttributionsView(
+              weatherAttribution: model.weatherStore.weatherAttribution
+            )
+          }
         }
     }
     .background(theme.colors.background.ignoresSafeArea())
@@ -86,7 +100,19 @@ struct SettingsView: View {
       "Clear Data and Reset App?",
       isPresented: $showsResetAlert
     ) {
-      Button("Reset App", role: .destructive, action: resetApp)
+      Button(
+        "Reset App", role: .destructive,
+        action: {
+          // The root owns the multi-store reset sequence. Settings only presents
+          // the destructive confirmation and turns a thrown error into an alert.
+          do {
+            try onResetApp()
+          } catch {
+            resetError = SettingsResetError(
+              message: localizedPlacesErrorDescription(error, locale: locale)
+            )
+          }
+        })
       Button("Cancel", role: .cancel) {}
     } message: {
       Text(
@@ -95,7 +121,14 @@ struct SettingsView: View {
     }
     .alert(
       "Settings",
-      isPresented: showsResetError,
+      isPresented: (Binding(
+        get: { resetError != nil },
+        set: { isPresented in
+          if !isPresented {
+            resetError = nil
+          }
+        }
+      )),
       presenting: resetError
     ) { _ in
       Button("OK") {
@@ -242,29 +275,6 @@ struct SettingsView: View {
   }
 
   // MARK: - Destination Forms
-
-  /// Value-based destination selection keeps navigation state in one enum
-  /// instead of five separate Boolean flags.
-  @ViewBuilder
-  private func destinationView(
-    _ destination: SettingsDestination
-  ) -> some View {
-    switch destination {
-    case .units:
-      unitsForm
-        .navigationTitle("Units")
-    case .language:
-      languageForm
-        .navigationTitle("Language")
-    case .theme:
-      themeForm
-        .navigationTitle("Theme")
-    case .attributions:
-      AttributionsView(
-        weatherAttribution: model.weatherStore.weatherAttribution
-      )
-    }
-  }
 
   /// Unit choices write immediately to app storage, which lets weather text
   /// throughout the app reformat on its next SwiftUI update.
@@ -466,7 +476,15 @@ struct SettingsView: View {
           model.publishWidgetCatalog(locale: locale)
         } label: {
           HStack {
-            Text(level.displayName(locale: locale))
+            Text(
+              {
+                switch level {
+                case .small: localizedString("Small", locale: locale)
+                case .medium: localizedString("Medium", locale: locale)
+                case .large: localizedString("Large (System)", locale: locale)
+                case .xLarge: localizedString("Large", locale: locale)
+                }
+              }())
             Spacer(minLength: 8)
             if !useSystemTextSize
               && (AppTextSizeLevel(
@@ -502,7 +520,12 @@ struct SettingsView: View {
                     AppTextSizeLevel.maximumSelectableRawValue
                   )
                 ) ?? .large
-              return level.displayName(locale: locale)
+              switch level {
+              case .small: return localizedString("Small", locale: locale)
+              case .medium: return localizedString("Medium", locale: locale)
+              case .large: return localizedString("Large (System)", locale: locale)
+              case .xLarge: return localizedString("Large", locale: locale)
+              }
             }())
         )
         .foregroundStyle(theme.colors.secondaryText)
@@ -717,28 +740,7 @@ struct SettingsView: View {
   // MARK: - Reset Handling
 
   /// Adapts optional error state to the Boolean binding expected by `alert`.
-  private var showsResetError: Binding<Bool> {
-    Binding(
-      get: { resetError != nil },
-      set: { isPresented in
-        if !isPresented {
-          resetError = nil
-        }
-      }
-    )
-  }
 
-  private func resetApp() {
-    // The root owns the multi-store reset sequence. Settings only presents
-    // the destructive confirmation and turns a thrown error into an alert.
-    do {
-      try onResetApp()
-    } catch {
-      resetError = SettingsResetError(
-        message: localizedPlacesErrorDescription(error, locale: locale)
-      )
-    }
-  }
 }
 
 // MARK: - Settings Navigation Values

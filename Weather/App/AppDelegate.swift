@@ -20,15 +20,6 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
     [.findSunNearMe, .places, .map]
   }
 
-  static func decode(_ rawValue: String) -> Self? {
-    switch rawValue {
-    case "findSunNearMe": .findSunNearMe
-    case "map": .map
-    case "places", "list": .places
-    default: nil
-    }
-  }
-
   func localizedTitle(locale: Locale) -> String {
     switch self {
     case .findSunNearMe:
@@ -104,37 +95,45 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     performActionFor shortcutItem: UIApplicationShortcutItem,
     completionHandler: @escaping (Bool) -> Void
   ) {
-    completionHandler(Self.handleShortcut(shortcutItem))
+    completionHandler(
+      ({ (shortcutItem: UIApplicationShortcutItem) in
+        guard let destination = Self.destination(from: shortcutItem) else {
+          return false
+        }
+
+        NotificationCenter.default.post(
+          name: .weatherOpenMainViewShortcut,
+          object: destination.rawValue
+        )
+        return true
+      })(shortcutItem))
   }
 
-  fileprivate static func handleShortcut(
-    _ shortcutItem: UIApplicationShortcutItem
-  ) -> Bool {
-    guard let destination = destination(from: shortcutItem) else {
-      return false
-    }
-
-    NotificationCenter.default.post(
-      name: .weatherOpenMainViewShortcut,
-      object: destination.rawValue
-    )
-    return true
-  }
-
-  private static func destination(
+  fileprivate static func destination(
     from shortcutItem: UIApplicationShortcutItem
   ) -> HomeScreenShortcutDestination? {
     if let rawValue = shortcutItem.userInfo?["destination"] as? String,
-      let destination = HomeScreenShortcutDestination.decode(rawValue)
+      let destination: HomeScreenShortcutDestination? = {
+        switch rawValue {
+        case "findSunNearMe": .findSunNearMe
+        case "map": .map
+        case "places", "list": .places
+        default: nil
+        }
+      }()
     {
       return destination
     }
 
     let marker = ".openView."
     if let range = shortcutItem.type.range(of: marker) {
-      return HomeScreenShortcutDestination.decode(
-        String(shortcutItem.type[range.upperBound...])
-      )
+      let rawValue = String(shortcutItem.type[range.upperBound...])
+      switch rawValue {
+      case "findSunNearMe": return .findSunNearMe
+      case "map": return .map
+      case "places", "list": return .places
+      default: return nil
+      }
     }
 
     if shortcutItem.userInfo?["listID"] != nil
@@ -154,7 +153,18 @@ final class AppSceneDelegate: NSObject, UIWindowSceneDelegate {
     performActionFor shortcutItem: UIApplicationShortcutItem,
     completionHandler: @escaping (Bool) -> Void
   ) {
-    completionHandler(AppDelegate.handleShortcut(shortcutItem))
+    completionHandler(
+      ({ (shortcutItem: UIApplicationShortcutItem) in
+        guard let destination = AppDelegate.destination(from: shortcutItem) else {
+          return false
+        }
+
+        NotificationCenter.default.post(
+          name: .weatherOpenMainViewShortcut,
+          object: destination.rawValue
+        )
+        return true
+      })(shortcutItem))
   }
 }
 

@@ -198,26 +198,6 @@ struct PlacesComparisonView: View {
   }
 
   /// Day mode shares the global selection with every other app surface.
-  private var dateSwitcherDates: [Date] {
-    let calendar = model.forecastCalendar
-    let sourceDates =
-      comparisonForecastDates.isEmpty
-      ? (0..<10).compactMap {
-        calendar.date(
-          byAdding: .day,
-          value: $0,
-          to: calendar.startOfDay(for: Date())
-        )
-      }
-      : comparisonForecastDates
-
-    return Array(
-      Set(
-        (sourceDates + [selectedDate]).map(calendar.startOfDay(for:))
-      )
-    )
-    .sorted()
-  }
 
   private var outlookForecastDates: [Date] {
     let calendar = model.forecastCalendar
@@ -353,17 +333,6 @@ struct PlacesComparisonView: View {
       })
   }
 
-  private func weekendRows(
-    recommendations: [PlaceRecommendation]
-  ) -> [ForecastComparisonWeekendDayRanking] {
-    ForecastComparisonWeekendDayRanking.ranked(
-      places: comparisonPlaces,
-      recommendations: (assessedRecommendations(on: selectedDate)),
-      loadingPlaceIDs: loadingPlaceIDs,
-      locale: locale
-    )
-  }
-
   // MARK: - Outlook Ranking
 
   private var sunnyOutlooks: [ForecastComparisonSunnyOutlook] {
@@ -378,10 +347,16 @@ struct PlacesComparisonView: View {
             for: weather,
             onOrAfter: referenceDate
           )
-          ?? localSelectionDate(
-            for: referenceDate,
-            timeZone: weather.timeZone
-          )
+          ?? ({ (date: Date, timeZone: TimeZone) in
+            var cityCalendar = model.forecastCalendar
+            cityCalendar.timeZone = timeZone
+            let components = cityCalendar.dateComponents(
+              [.year, .month, .day],
+              from: date
+            )
+            return model.forecastCalendar.date(from: components)
+              ?? model.forecastCalendar.startOfDay(for: date)
+          })(referenceDate, weather.timeZone)
         switch weather.mostlySunnyForecastSearch(
           onOrAfter: referenceDate,
           selectionCalendar: model.forecastCalendar
@@ -401,18 +376,36 @@ struct PlacesComparisonView: View {
         }
       } else if loadingPlaceIDs.contains(place.id) {
         status = .loading
-        navigationDate = localSelectionDate(
-          for: referenceDate,
-          timeZone: place.city.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
-            ?? model.forecastCalendar.timeZone
-        )
+        navigationDate =
+          ({ (date: Date, timeZone: TimeZone) in
+            var cityCalendar = model.forecastCalendar
+            cityCalendar.timeZone = timeZone
+            let components = cityCalendar.dateComponents(
+              [.year, .month, .day],
+              from: date
+            )
+            return model.forecastCalendar.date(from: components)
+              ?? model.forecastCalendar.startOfDay(for: date)
+          })(
+            referenceDate,
+            place.city.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
+              ?? model.forecastCalendar.timeZone)
       } else {
         status = .unavailable
-        navigationDate = localSelectionDate(
-          for: referenceDate,
-          timeZone: place.city.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
-            ?? model.forecastCalendar.timeZone
-        )
+        navigationDate =
+          ({ (date: Date, timeZone: TimeZone) in
+            var cityCalendar = model.forecastCalendar
+            cityCalendar.timeZone = timeZone
+            let components = cityCalendar.dateComponents(
+              [.year, .month, .day],
+              from: date
+            )
+            return model.forecastCalendar.date(from: components)
+              ?? model.forecastCalendar.startOfDay(for: date)
+          })(
+            referenceDate,
+            place.city.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
+              ?? model.forecastCalendar.timeZone)
       }
 
       return ForecastComparisonSunnyOutlook(
@@ -458,19 +451,6 @@ struct PlacesComparisonView: View {
   }
 
   /// Carries a city-local literal day into the shared forecast calendar.
-  private func localSelectionDate(
-    for date: Date,
-    timeZone: TimeZone
-  ) -> Date {
-    var cityCalendar = model.forecastCalendar
-    cityCalendar.timeZone = timeZone
-    let components = cityCalendar.dateComponents(
-      [.year, .month, .day],
-      from: date
-    )
-    return model.forecastCalendar.date(from: components)
-      ?? model.forecastCalendar.startOfDay(for: date)
-  }
 
   // MARK: - Loading State
 
@@ -527,7 +507,13 @@ struct PlacesComparisonView: View {
             modeList
 
             if source.isSavedPlaces {
-              manageSavedPlacesLink
+              (NavigationLink(value: AppRoute.savedPlacesLibrary) {
+                SecondaryTextActionLabel(
+                  title: "Manage Saved Places",
+                  systemImage: "chevron.right"
+                )
+              }
+              .buttonStyle(.plain))
             }
           }
           .padding(.horizontal, 16)
@@ -556,16 +542,34 @@ struct PlacesComparisonView: View {
       }
     }
     .background(theme.colors.background)
-    .navigationTitle(navigationTitle)
+    .navigationTitle(
+      ({
+        switch source {
+        case .savedPlaces:
+          localizedString("Saved Places", locale: locale)
+        case .mapQuery(let title, _):
+          title
+        }
+      })()
+    )
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       if source.isSavedPlaces {
         // Keep this item mounted while scrolling. Changing only its
         // opacity avoids rebuilding the toolbar preference structure.
         ToolbarItem(placement: .principal) {
-          Text(navigationTitle)
-            .lineLimit(1)
-            .opacity(showsLargeTitle ? 0 : 1)
+          Text(
+            ({
+              switch source {
+              case .savedPlaces:
+                localizedString("Saved Places", locale: locale)
+              case .mapQuery(let title, _):
+                title
+              }
+            })()
+          )
+          .lineLimit(1)
+          .opacity(showsLargeTitle ? 0 : 1)
         }
 
         ToolbarItem(placement: .topBarLeading) {
@@ -579,14 +583,48 @@ struct PlacesComparisonView: View {
       ToolbarItem(placement: .topBarTrailing) {
         TopForecastDateSwitcher(
           selection: $selectedDate,
-          availableDates: dateSwitcherDates,
+          availableDates: ({
+            let calendar = model.forecastCalendar
+            let sourceDates =
+              comparisonForecastDates.isEmpty
+              ? (0..<10).compactMap {
+                calendar.date(
+                  byAdding: .day,
+                  value: $0,
+                  to: calendar.startOfDay(for: Date())
+                )
+              }
+              : comparisonForecastDates
+
+            return Array(
+              Set(
+                (sourceDates + [selectedDate]).map(calendar.startOfDay(for:))
+              )
+            )
+            .sorted()
+          })(),
           display: dateSwitcherDisplay,
           staticRangeHorizontalPadding: selectedMode == .outlook ? 6 : 0
         )
       }
     }
     .refreshable {
-      await refreshForecasts()
+      switch source {
+      case .savedPlaces:
+        await model.weatherStore.load(
+          cities: model.placesStore.allPlaces.map(\.city),
+          forceRefresh: true
+        )
+        let resolvedCities = model.placesStore.allPlaces.compactMap { place in
+          model.weatherStore.weather(for: place.id)?.city
+        }.filter(PlacesLibraryValidator.isValidCity)
+        _ = try? model.placesStore.savePlaces(resolvedCities)
+      case .mapQuery:
+        await model.weatherStore.load(
+          cities: comparisonPlaces.map(\.city),
+          forceRefresh: true
+        )
+      }
     }
     .navigationDestination(item: $mapDetailPlaceID) { placeID in
       DetailView(
@@ -594,27 +632,6 @@ struct PlacesComparisonView: View {
         selectedDate: $selectedDate,
         model: model,
         router: router
-      )
-    }
-  }
-
-  private var navigationTitle: String {
-    switch source {
-    case .savedPlaces:
-      localizedString("Saved Places", locale: locale)
-    case .mapQuery(let title, _):
-      title
-    }
-  }
-
-  private func refreshForecasts() async {
-    switch source {
-    case .savedPlaces:
-      await model.loadSavedWeather(forceRefresh: true)
-    case .mapQuery:
-      await model.weatherStore.load(
-        cities: comparisonPlaces.map(\.city),
-        forceRefresh: true
       )
     }
   }
@@ -639,10 +656,18 @@ struct PlacesComparisonView: View {
       BestWeekendEscapeCard(
         saturdayDate: weekendDates.saturday,
         sundayDate: weekendDates.sunday,
-        saturdayRows: (weekendRows(
-          recommendations: (assessedRecommendations(on: weekendDates.saturday)))),
-        sundayRows: (weekendRows(
-          recommendations: (assessedRecommendations(on: weekendDates.sunday)))),
+        saturdayRows: ((ForecastComparisonWeekendDayRanking.ranked(
+          places: comparisonPlaces,
+          recommendations: (assessedRecommendations(on: selectedDate)),
+          loadingPlaceIDs: loadingPlaceIDs,
+          locale: locale
+        ))),
+        sundayRows: ((ForecastComparisonWeekendDayRanking.ranked(
+          places: comparisonPlaces,
+          recommendations: (assessedRecommendations(on: selectedDate)),
+          loadingPlaceIDs: loadingPlaceIDs,
+          locale: locale
+        ))),
         presentationState: forecastPresentationState,
         statusMessages: (source.isSavedPlaces ? .savedPlaces : .mapQuery),
         onSelect: openComparisonPlace
@@ -697,7 +722,14 @@ struct PlacesComparisonView: View {
               storedModeRawValue = mode.rawValue
             } label: {
               HStack {
-                Text(mode.title)
+                Text(
+                  {
+                    switch mode {
+                    case .day: "Best Sunny Places"
+                    case .weekend: "Best Weekend Escape"
+                    case .outlook: "Next Sunny Day"
+                    }
+                  }())
                 if mode == selectedMode {
                   Image(systemName: "checkmark")
                 }
@@ -707,7 +739,13 @@ struct PlacesComparisonView: View {
         } label: {
           DetailStyleReportMenuLabel(
             title: {
-              var title = selectedMode.title
+              var title: LocalizedStringResource = {
+                switch selectedMode {
+                case .day: "Best Sunny Places"
+                case .weekend: "Best Weekend Escape"
+                case .outlook: "Next Sunny Day"
+                }
+              }()
               title.locale = locale
               return String(localized: title)
             }(),
@@ -719,11 +757,22 @@ struct PlacesComparisonView: View {
         Spacer(minLength: 0)
       }
 
-      Text(selectedMode.subtitle)
-        .font(.body)
-        .foregroundStyle(theme.colors.secondaryText)
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: .infinity)
+      Text(
+        {
+          switch selectedMode {
+          case .day:
+            "Places ranked by daytime sunny hours on the selected day."
+          case .weekend:
+            "Places ranked by daytime sunny hours this weekend."
+          case .outlook:
+            "Next day with sunshine for at least 80% of daytime hours."
+          }
+        }()
+      )
+      .font(.body)
+      .foregroundStyle(theme.colors.secondaryText)
+      .multilineTextAlignment(.center)
+      .frame(maxWidth: .infinity)
     }
     .frame(maxWidth: .infinity)
     .padding(.top, 4)
@@ -738,13 +787,4 @@ struct PlacesComparisonView: View {
     }
   }
 
-  private var manageSavedPlacesLink: some View {
-    NavigationLink(value: AppRoute.savedPlacesLibrary) {
-      SecondaryTextActionLabel(
-        title: "Manage Saved Places",
-        systemImage: "chevron.right"
-      )
-    }
-    .buttonStyle(.plain)
-  }
 }

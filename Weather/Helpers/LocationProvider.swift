@@ -51,21 +51,6 @@ nonisolated enum LocationProviderStatus: Equatable, Hashable, Sendable {
 
 // MARK: - Shared Location Presentation State
 
-extension LocationProviderStatus {
-  /// The phases that are actively working toward the first usable coordinate.
-  /// Daily and multi-day forecast cards share this exact classification so one
-  /// report cannot show loading while another prematurely shows unavailable.
-  var isActivelyLocating: Bool {
-    switch self {
-    case .checkingAvailability, .requestingAuthorization, .locating:
-      true
-    case .idle, .resolvingPlace, .ready, .readyWithoutMetadata, .denied,
-      .restricted, .servicesDisabled, .failed:
-      false
-    }
-  }
-}
-
 /// Display metadata returned by Apple's reverse geocoder for the coordinate.
 /// All fields are optional because a coordinate can be precise and usable even
 /// when a provider cannot supply one of these presentation-only details.
@@ -179,18 +164,6 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     coordinate.map(CLLocationCoordinate2DIsValid) == true
   }
 
-  /// Whether a one-shot refresh can run without presenting authorization UI.
-  var hasLocationAuthorization: Bool {
-    switch manager.authorizationStatus {
-    case .authorizedAlways, .authorizedWhenInUse:
-      return true
-    case .notDetermined, .denied, .restricted:
-      return false
-    @unknown default:
-      return false
-    }
-  }
-
   /// True while a manually chosen home location is supplying the app's
   /// location. Core Location callbacks must not replace that choice later.
   private(set) var isUsingHomeLocation = false
@@ -198,7 +171,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
   // MARK: - Core Location Dependencies and Task State
 
   /// System manager retained for delegate callbacks.
-  @ObservationIgnored private let manager: CLLocationManager
+  @ObservationIgnored let manager: CLLocationManager
   /// Pre-iOS 26 reverse geocoder retained so prior work can be cancelled.
   @ObservationIgnored private let geocoder = CLGeocoder()
   /// Current display-metadata resolution task.
@@ -220,7 +193,16 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     manager.delegate = self
     manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     manager.distanceFilter = kCLDistanceFilterNone
-    syncAuthorizationStatus()
+    switch manager.authorizationStatus {
+    case .authorizedAlways, .authorizedWhenInUse, .notDetermined:
+      status = coordinate == nil ? .idle : status
+    case .denied:
+      clearPublishedLocation(status: .denied)
+    case .restricted:
+      clearPublishedLocation(status: .restricted)
+    @unknown default:
+      clearPublishedLocation(status: .failed)
+    }
   }
 
   deinit {
@@ -298,7 +280,16 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     isUsingHomeLocation = false
     coordinate = nil
     metadata = nil
-    syncAuthorizationStatus()
+    switch manager.authorizationStatus {
+    case .authorizedAlways, .authorizedWhenInUse, .notDetermined:
+      status = coordinate == nil ? .idle : status
+    case .denied:
+      clearPublishedLocation(status: .denied)
+    case .restricted:
+      clearPublishedLocation(status: .restricted)
+    @unknown default:
+      clearPublishedLocation(status: .failed)
+    }
   }
 
   // MARK: - CLLocationManager Delegate Callbacks
@@ -371,7 +362,16 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     if let locationError = error as? CLError,
       locationError.code == .denied
     {
-      syncAuthorizationStatus()
+      switch manager.authorizationStatus {
+      case .authorizedAlways, .authorizedWhenInUse, .notDetermined:
+        status = coordinate == nil ? .idle : status
+      case .denied:
+        clearPublishedLocation(status: .denied)
+      case .restricted:
+        clearPublishedLocation(status: .restricted)
+      @unknown default:
+        clearPublishedLocation(status: .failed)
+      }
       return
     }
     clearPublishedLocation(status: .failed)
@@ -380,18 +380,6 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
   // MARK: - Authorization and One-Shot Flow
 
   /// Reads current authorization without prompting or starting updates.
-  private func syncAuthorizationStatus() {
-    switch manager.authorizationStatus {
-    case .authorizedAlways, .authorizedWhenInUse, .notDetermined:
-      status = coordinate == nil ? .idle : status
-    case .denied:
-      clearPublishedLocation(status: .denied)
-    case .restricted:
-      clearPublishedLocation(status: .restricted)
-    @unknown default:
-      clearPublishedLocation(status: .failed)
-    }
-  }
 
   /// Continues on the main actor after device-wide availability is known.
   /// Only the `.notDetermined` branch asks iOS to show the permission prompt.

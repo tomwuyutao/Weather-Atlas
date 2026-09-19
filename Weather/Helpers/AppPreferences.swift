@@ -70,28 +70,6 @@ enum DetailReportSection: String, CaseIterable, Identifiable {
 
   var id: String { rawValue }
 
-  var title: LocalizedStringResource {
-    switch self {
-    case .tenDaySunnyHours:
-      "10-Day Sunny Hours"
-    case .basicWeatherData:
-      "Basic Weather Data"
-    case .nearbySunnyPlaces:
-      "Nearby Sunnier Places"
-    }
-  }
-
-  var systemImage: String {
-    switch self {
-    case .tenDaySunnyHours:
-      "calendar"
-    case .basicWeatherData:
-      "square.grid.2x2"
-    case .nearbySunnyPlaces:
-      "location.magnifyingglass"
-    }
-  }
-
   /// Ignores corrupt and duplicate values, then appends any sections added
   /// by a future app version in their default order.
   static func order(from storedValue: String) -> [DetailReportSection] {
@@ -127,28 +105,6 @@ enum SavedPlacesViewMode: String, CaseIterable, Identifiable {
   static let defaultRawValue = SavedPlacesViewMode.day.rawValue
 
   var id: String { rawValue }
-
-  var title: LocalizedStringResource {
-    switch self {
-    case .day:
-      "Best Sunny Places"
-    case .weekend:
-      "Best Weekend Escape"
-    case .outlook:
-      "Next Sunny Day"
-    }
-  }
-
-  var subtitle: LocalizedStringResource {
-    switch self {
-    case .day:
-      "Places ranked by daytime sunny hours on the selected day."
-    case .weekend:
-      "Places ranked by daytime sunny hours this weekend."
-    case .outlook:
-      "Next day with sunshine for at least 80% of daytime hours."
-    }
-  }
 
 }
 
@@ -242,13 +198,4 @@ enum AppTextSizeLevel: Int, CaseIterable {
     }
   }
 
-  /// Localized Settings label for this slider step.
-  func displayName(locale: Locale) -> String {
-    switch self {
-    case .small: return localizedString("Small", locale: locale)
-    case .medium: return localizedString("Medium", locale: locale)
-    case .large: return localizedString("Large (System)", locale: locale)
-    case .xLarge: return localizedString("Large", locale: locale)
-    }
-  }
 }

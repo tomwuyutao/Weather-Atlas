@@ -141,8 +141,22 @@ actor CitiesCatalog {
         cities
         .filter {
           $0.isoCountryCode == label.countryCode
-            && Self.normalizedSearchText($0.name)
-              == Self.normalizedSearchText(label.name)
+            && $0.name
+              .trimmingCharacters(in: .whitespacesAndNewlines)
+              .folding(
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+              )
+              .split(whereSeparator: \.isWhitespace)
+              .joined(separator: " ")
+              == label.name
+              .trimmingCharacters(in: .whitespacesAndNewlines)
+              .folding(
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+              )
+              .split(whereSeparator: \.isWhitespace)
+              .joined(separator: " ")
         }
         .max { lhs, rhs in
           if lhs.population != rhs.population {
@@ -177,11 +191,8 @@ actor CitiesCatalog {
     return resolved
   }
 
-  /// Discards one previously failed or partial parsing task so a caller can
-  /// make one fresh attempt before surfacing a missing-catalog alert. The
-  /// bundled resource itself is immutable for a running build, but retrying
-  /// the read protects against a transient file-read or task-cancellation
-  /// failure without inventing a fallback catalog.
+  /// Actor-isolated cache reset used after a failed catalog read. This state
+  /// mutation cannot be inlined into callers outside the actor.
   func reload() {
     loadTask?.cancel()
     loadTask = nil
@@ -261,37 +272,6 @@ actor CitiesCatalog {
       }.prefix(limit))
   }
 
-  /// Returns the most populous representative of each nearby metro cluster.
-  /// The larger source pool lets a dense set of boroughs be replaced by the
-  /// next distinct cities, while the caller's result limit stays fixed.
-  func mostPopulousSpatiallyDistinctCities(
-    centeredAt center: CLLocationCoordinate2D,
-    withinKilometers radiusKilometers: Double,
-    fartherThanKilometers minimumDistanceKilometers: Double = 0,
-    resultLimit: Int,
-    sourceCandidateLimit: Int,
-    clusterRadiusKilometers: Double
-  ) async throws -> [CatalogCityDistanceCandidate] {
-    guard resultLimit > 0,
-      sourceCandidateLimit > 0,
-      clusterRadiusKilometers.isFinite,
-      clusterRadiusKilometers > 0
-    else {
-      return []
-    }
-    let sourceCities = try await mostPopulousCities(
-      centeredAt: center,
-      withinKilometers: radiusKilometers,
-      fartherThanKilometers: minimumDistanceKilometers,
-      limit: max(resultLimit, sourceCandidateLimit)
-    )
-    return Self.spatiallyDistinct(
-      sourceCities,
-      resultLimit: resultLimit,
-      clusterRadiusKilometers: clusterRadiusKilometers
-    )
-  }
-
   /// Returns the most populous cities visible in a MapKit region. This is a
   /// screen-area query rather than a radius query, so Find Sun mirrors the
   /// part of the map the person is actually looking at.
@@ -364,43 +344,31 @@ actor CitiesCatalog {
       }.prefix(limit))
   }
 
-  /// Returns population-leading visible cities with one representative per
-  /// nearby metro cluster. The map area itself remains the geographic scope;
-  /// only duplicate locality rows are replaced by the next available city.
-  func spatiallyDistinctCities(
-    visibleIn region: MKCoordinateRegion,
-    resultLimit: Int,
-    sourceCandidateLimit: Int,
-    clusterRadiusKilometers: Double
-  ) async throws -> [CatalogCity] {
-    guard resultLimit > 0,
-      sourceCandidateLimit > 0,
-      clusterRadiusKilometers.isFinite,
-      clusterRadiusKilometers > 0
-    else {
-      return []
-    }
-    let sourceCities = try await cities(
-      visibleIn: region,
-      limit: max(resultLimit, sourceCandidateLimit)
-    )
-    return Self.spatiallyDistinct(
-      sourceCities,
-      resultLimit: resultLimit,
-      clusterRadiusKilometers: clusterRadiusKilometers
-    )
-  }
-
   /// Resolves a literal saved-place label against the bundled GeoNames city
   /// catalog. This is deliberately name-only: a person may have renamed a
   /// place to any city, so the label rather than its stored coordinate is the
   /// authority for this lookup. Population and ID make duplicate labels
   /// deterministic without inventing a translation.
   func city(matchingCanonicalName name: String) async throws -> CatalogCity? {
-    let normalizedName = Self.normalizedSearchText(name)
+    let normalizedName =
+      name
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .folding(
+        options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+        locale: Locale(identifier: "en_US_POSIX")
+      )
+      .split(whereSeparator: \.isWhitespace)
+      .joined(separator: " ")
     guard !normalizedName.isEmpty else { return nil }
     let matches = try await catalogData().filter {
-      Self.normalizedSearchText($0.name) == normalizedName
+      $0.name
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .folding(
+          options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+          locale: Locale(identifier: "en_US_POSIX")
+        )
+        .split(whereSeparator: \.isWhitespace)
+        .joined(separator: " ") == normalizedName
     }
     return matches.sorted {
       if $0.population != $1.population {
@@ -423,34 +391,8 @@ actor CitiesCatalog {
       return try await loadTask.value
     }
 
-    let url = try resolvedResourceURL()
-    // CSV decoding is CPU/file work, not UI work. A detached utility task
-    // avoids inheriting a caller's actor and leaves interactive work ahead.
-    let task = Task.detached(priority: .utility) {
-      try Self.decodeCities(at: url)
-    }
-    loadTask = task
-    return try await task.value
-  }
-
-  private func starterCatalogData() async throws -> [CatalogCity] {
-    if let starterLoadTask {
-      return try await starterLoadTask.value
-    }
-
-    let url = try resolvedStarterResourceURL()
-    let task = Task.detached(priority: .utility) {
-      try Self.decodeCities(at: url)
-    }
-    starterLoadTask = task
-    return try await task.value
-  }
-
-  /// Locates the resource in both Xcode's flattened bundle layout and a
-  /// folder-preserving bundle layout.
-  private func resolvedResourceURL() throws -> URL {
     guard
-      let bundledURL =
+      let url =
         Bundle.main.url(forResource: "worldcities", withExtension: "csv")
         ?? Bundle.main.url(
           forResource: "worldcities",
@@ -465,19 +407,33 @@ actor CitiesCatalog {
     else {
       throw CitiesCatalogError.resourceMissing
     }
-    return bundledURL
+    // CSV decoding is CPU/file work, not UI work. A detached utility task
+    // avoids inheriting a caller's actor and leaves interactive work ahead.
+    let task = Task.detached(priority: .utility) {
+      try Self.decodeCities(at: url)
+    }
+    loadTask = task
+    return try await task.value
   }
 
-  private func resolvedStarterResourceURL() throws -> URL {
+  private func starterCatalogData() async throws -> [CatalogCity] {
+    if let starterLoadTask {
+      return try await starterLoadTask.value
+    }
+
     guard
-      let bundledURL = Bundle.main.url(
+      let url = Bundle.main.url(
         forResource: "starter-cities",
         withExtension: "csv"
       )
     else {
       throw CitiesCatalogError.resourceMissing
     }
-    return bundledURL
+    let task = Task.detached(priority: .utility) {
+      try Self.decodeCities(at: url)
+    }
+    starterLoadTask = task
+    return try await task.value
   }
 
   // MARK: - Geographic Query Helpers
@@ -485,7 +441,7 @@ actor CitiesCatalog {
   /// Keeps the first (therefore most populous) source row and discards later
   /// rows within its metro radius. The source query has already established
   /// deterministic population order, so no weather data is involved here.
-  nonisolated private static func spatiallyDistinct(
+  nonisolated static func spatiallyDistinct(
     _ candidates: [CatalogCityDistanceCandidate],
     resultLimit: Int,
     clusterRadiusKilometers: Double
@@ -511,7 +467,7 @@ actor CitiesCatalog {
   }
 
   /// City-only overload used by the Map's visible-area query.
-  nonisolated private static func spatiallyDistinct(
+  nonisolated static func spatiallyDistinct(
     _ candidates: [CatalogCity],
     resultLimit: Int,
     clusterRadiusKilometers: Double
@@ -695,21 +651,6 @@ actor CitiesCatalog {
 
     fields.append(currentField)
     return fields
-  }
-
-  /// Locale-stable normalization for city, region, and country search.
-  /// The fixed POSIX locale makes matching repeatable regardless of the app
-  /// language; folding ignores case, accents, and full-width characters while
-  /// collapsing runs of whitespace into one canonical space.
-  nonisolated private static func normalizedSearchText(_ value: String) -> String {
-    value
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-      .folding(
-        options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-        locale: Locale(identifier: "en_US_POSIX")
-      )
-      .split(whereSeparator: \.isWhitespace)
-      .joined(separator: " ")
   }
 
   /// Haversine distance that handles the antimeridian without allocating

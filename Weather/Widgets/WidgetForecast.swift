@@ -57,10 +57,19 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
     let entryDate = Date.now
     return SunnyHoursLockScreenEntry(
       date: entryDate,
-      city: WidgetTimelinePlanner.displayCity(
-        for: result,
-        at: entryDate
-      )
+      city: ({ () -> WidgetDataCity? in
+        guard let city = result.city,
+          let snapshot = result.snapshot
+        else {
+          return result.city
+        }
+        guard let appliedCity = city.applying(snapshot, at: entryDate),
+          appliedCity.widgetCurrentIssue == nil
+        else {
+          return city.markingUnavailable(.missingForecastData(at: entryDate))
+        }
+        return appliedCity
+      }())
     )
   }
 
@@ -265,7 +274,37 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
         return fallback
       }
     } else {
-      city = await cityResolvingTimeZoneIfNeeded(selectedCatalogCity)
+      if let identifier = selectedCatalogCity.timeZoneIdentifier,
+        TimeZone(identifier: identifier) != nil
+      {
+        city = selectedCatalogCity
+      } else if let latitude = selectedCatalogCity.latitude,
+        let longitude = selectedCatalogCity.longitude,
+        let timeZone = await WidgetTimeZoneResolver.shared.timeZone(
+          latitude: latitude,
+          longitude: longitude
+        )
+      {
+        city = WidgetDataCity(
+          id: selectedCatalogCity.id,
+          legacyIdentifiers: selectedCatalogCity.legacyIdentifiers,
+          cityName: selectedCatalogCity.cityName,
+          configurationSubtitle: selectedCatalogCity.configurationSubtitle,
+          timeZoneIdentifier: timeZone.identifier,
+          latitude: selectedCatalogCity.latitude,
+          longitude: selectedCatalogCity.longitude,
+          hourlyConditions: selectedCatalogCity.hourlyConditions,
+          hourlyWeatherConditions: selectedCatalogCity.hourlyWeatherConditions,
+          currentWeather: selectedCatalogCity.currentWeather,
+          weatherFetchedAt: selectedCatalogCity.weatherFetchedAt,
+          sunrise: selectedCatalogCity.sunrise,
+          sunset: selectedCatalogCity.sunset,
+          sunnyWindowDays: selectedCatalogCity.sunnyWindowDays,
+          dataIssue: selectedCatalogCity.dataIssue
+        )
+      } else {
+        city = selectedCatalogCity
+      }
       preservesResolvedCityName = false
       // Time-zone repair is asynchronous. A Saved Place can be deleted,
       // replaced, or edited while it is suspended, so do not apply a
@@ -285,7 +324,16 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
       return WidgetRefreshResult(
         city: city.markingUnavailable(issue),
         snapshot: nil,
-        reloadPolicy: reloadPolicy(for: issue)
+        reloadPolicy: {
+          switch issue.kind {
+          case .weatherRequestFailed, .missingForecastData:
+            return .transientFailure
+          case .unresolvedPlace, .missingTimeZone:
+            return .persistentFailure
+          default:
+            return .persistentFailure
+          }
+        }()
       )
     }
     guard let latitude = city.latitude,
@@ -398,7 +446,19 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
       // WeatherKit and Core Location can both suspend across midnight.
       // Never persist or display a response whose destination-local day
       // ceased to be Today while the request was in flight.
-      guard snapshot.representsLocalDay(containing: .now) else {
+      guard
+        ({ () -> Bool in
+          guard let timeZoneIdentifier = snapshot.timeZoneIdentifier,
+            let timeZone = TimeZone(identifier: timeZoneIdentifier),
+            let representedLocalDate = snapshot.representedLocalDate
+          else {
+            return false
+          }
+          var calendar = Calendar.current
+          calendar.timeZone = timeZone
+          return calendar.isDate(representedLocalDate, inSameDayAs: .now)
+        }())
+      else {
         throw WidgetWeatherFetchError.missingCurrentHourlyCoverage
       }
 
@@ -451,7 +511,12 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
       else {
         throw WidgetWeatherFetchError.missingCurrentHourlyCoverage
       }
-      WidgetForecastStore.save(snapshot, for: city.id)
+      if let data = try? JSONEncoder().encode(snapshot) {
+        UserDefaults.standard.set(
+          data,
+          forKey: "widgetForecastSnapshot.v2.\(city.id)"
+        )
+      }
       return WidgetRefreshResult(
         city: appliedCity,
         snapshot: snapshot,
@@ -586,10 +651,16 @@ extension SunnyHoursLockScreenProvider {
       let selectedEntity =
         configuration.city
         ?? .defaultLocation(in: nil)
-      return unavailableConfiguredCity(
-        selectedEntity,
-        issue: .unresolvedPlace("widget location catalog")
-      )
+      return
+        (WidgetDataCity(
+          id: (selectedEntity).id,
+          cityName: (selectedEntity).cityName,
+          configurationSubtitle: (selectedEntity).subtitle,
+          timeZoneIdentifier: nil,
+          latitude: nil,
+          longitude: nil,
+          dataIssue: (.unresolvedPlace("widget location catalog"))
+        ))
     }
     WidgetForecastStore.prune(
       keeping: Set(
@@ -607,10 +678,15 @@ extension SunnyHoursLockScreenProvider {
     let selectedEntity = configuration.city ?? defaultEntity
     let defaultCity =
       catalog.currentLocation
-      ?? unavailableConfiguredCity(
-        defaultEntity,
-        issue: .unresolvedPlace("default location")
-      )
+      ?? (WidgetDataCity(
+        id: (defaultEntity).id,
+        cityName: (defaultEntity).cityName,
+        configurationSubtitle: (defaultEntity).subtitle,
+        timeZoneIdentifier: nil,
+        latitude: nil,
+        longitude: nil,
+        dataIssue: (.unresolvedPlace("default location"))
+      ))
     if selectedEntity.id == WidgetDataStore.currentLocationIdentifier {
       return defaultCity
     }
@@ -643,50 +719,20 @@ extension SunnyHoursLockScreenProvider {
       // only when no deleted identity still claims that historic alias.
       return savedCity
     }
-    return unavailableConfiguredCity(
-      selectedEntity,
-      issue: .unresolvedPlace("saved widget location")
-    )
+    return
+      (WidgetDataCity(
+        id: (selectedEntity).id,
+        cityName: (selectedEntity).cityName,
+        configurationSubtitle: (selectedEntity).subtitle,
+        timeZoneIdentifier: nil,
+        latitude: nil,
+        longitude: nil,
+        dataIssue: (.unresolvedPlace("saved widget location"))
+      ))
   }
 
   /// Retains a configured entity's stable identity when its catalog record or
   /// fetchable coordinates are unavailable.
-  private func unavailableConfiguredCity(
-    _ city: WidgetCityEntity,
-    issue: WeatherDataIssue
-  ) -> WidgetDataCity {
-    WidgetDataCity(
-      id: city.id,
-      cityName: city.cityName,
-      configurationSubtitle: city.subtitle,
-      timeZoneIdentifier: nil,
-      latitude: nil,
-      longitude: nil,
-      dataIssue: issue
-    )
-  }
-
-  /// Repairs fixed places whose older catalog record lacks timezone metadata.
-  /// This remains extension-local and does not require the app to reopen.
-  func cityResolvingTimeZoneIfNeeded(
-    _ city: WidgetDataCity
-  ) async -> WidgetDataCity {
-    if let identifier = city.timeZoneIdentifier,
-      TimeZone(identifier: identifier) != nil
-    {
-      return city
-    }
-    guard let latitude = city.latitude,
-      let longitude = city.longitude,
-      let timeZone = await WidgetTimeZoneResolver.shared.timeZone(
-        latitude: latitude,
-        longitude: longitude
-      )
-    else {
-      return city
-    }
-    return city.replacingTimeZone(with: timeZone.identifier)
-  }
 
   /// Re-resolves the configuration after suspension so catalog/reset changes
   /// cannot be hidden by the provider's earlier value-type copy.
@@ -753,7 +799,7 @@ extension SunnyHoursLockScreenProvider {
     let referenceDate = Date.now
     var appliedCity: WidgetDataCity?
     guard
-      let snapshot = WidgetForecastStore.freshSnapshot(
+      let snapshot = WidgetForecastStore.firstMatchingSnapshot(
         forAny: {
           var seen: Set<String> = []
           return ([city.id] + (city.legacyIdentifiers ?? [])).filter {
@@ -761,6 +807,7 @@ extension SunnyHoursLockScreenProvider {
           }
         }(),
         now: referenceDate,
+        maximumAge: WidgetForecastCachePolicy.freshnessInterval,
         matching: {
           guard
             snapshotMatchesCity(
@@ -797,7 +844,7 @@ extension SunnyHoursLockScreenProvider {
     let referenceDate = Date.now
     var cachedCity: WidgetDataCity?
     guard
-      let snapshot = WidgetForecastStore.fallbackSnapshot(
+      let snapshot = WidgetForecastStore.firstMatchingSnapshot(
         forAny: {
           var seen: Set<String> = []
           return ([city.id] + (city.legacyIdentifiers ?? [])).filter {
@@ -805,6 +852,7 @@ extension SunnyHoursLockScreenProvider {
           }
         }(),
         now: referenceDate,
+        maximumAge: nil,
         matching: {
           guard
             snapshotMatchesCity(
@@ -895,7 +943,16 @@ extension SunnyHoursLockScreenProvider {
       return WidgetRefreshResult(
         city: city.markingUnavailable(issue),
         snapshot: nil,
-        reloadPolicy: reloadPolicy(for: issue)
+        reloadPolicy: {
+          switch issue.kind {
+          case .weatherRequestFailed, .missingForecastData:
+            return .transientFailure
+          case .unresolvedPlace, .missingTimeZone:
+            return .persistentFailure
+          default:
+            return .persistentFailure
+          }
+        }()
       )
     }
     if (configuration.city ?? .defaultLocation(in: catalog)).id
@@ -932,19 +989,6 @@ extension SunnyHoursLockScreenProvider {
     )
   }
 
-  /// Maps validated data issues to WidgetKit retry behavior.
-  func reloadPolicy(for issue: WeatherDataIssue) -> WidgetReloadPolicy {
-    switch issue.kind {
-    case .weatherRequestFailed,
-      .missingForecastData:
-      return .transientFailure
-    case .unresolvedPlace,
-      .missingTimeZone:
-      return .persistentFailure
-    default:
-      return .persistentFailure
-    }
-  }
 }
 
 // MARK: - Refresh Result
@@ -971,28 +1015,6 @@ enum WidgetTimelinePlanner {
   private static let failureRetryInterval: TimeInterval = 15 * 60
   /// Current-time markers advance between network refresh opportunities.
   private static let markerUpdateInterval: TimeInterval = 30 * 60
-
-  /// Reapplies one immutable snapshot at the exact entry timestamp. Provider
-  /// refresh, gallery snapshot, and timeline planning can straddle a city-local
-  /// midnight, so reusing their earlier applied value could render yesterday.
-  static func displayCity(
-    for result: WidgetRefreshResult,
-    at date: Date
-  ) -> WidgetDataCity? {
-    guard let city = result.city,
-      let snapshot = result.snapshot
-    else {
-      return result.city
-    }
-    guard let appliedCity = city.applying(snapshot, at: date),
-      appliedCity.widgetCurrentIssue == nil
-    else {
-      return city.markingUnavailable(
-        .missingForecastData(at: date)
-      )
-    }
-    return appliedCity
-  }
 
   /// Creates a useful offline timeline from one immutable forecast. Forecast
   /// interval boundaries update sun status, while half-hour checkpoints move
@@ -1027,10 +1049,20 @@ enum WidgetTimelinePlanner {
 
     guard let city = result.city,
       let snapshot = result.snapshot,
-      let displayExpiry = snapshotDisplayExpiry(
-        snapshot,
-        relativeTo: now
-      ),
+      let displayExpiry =
+        ({ (snapshot: WidgetWeatherSnapshot, now: Date) -> Date? in
+          guard
+            snapshot.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
+              != nil,
+            snapshot.representedLocalDate != nil
+          else {
+            return nil
+          }
+          let expiry = snapshot.fetchedAt.addingTimeInterval(
+            WidgetForecastCachePolicy.retentionInterval
+          )
+          return expiry > now ? expiry : nil
+        })(snapshot, now),
       displayExpiry > now
     else {
       // A result can carry an applied city alongside an expired or
@@ -1125,14 +1157,38 @@ enum WidgetTimelinePlanner {
     var entries = [
       SunnyHoursLockScreenEntry(
         date: now,
-        city: displayCity(for: result, at: now)
+        city: ({ () -> WidgetDataCity? in
+          guard let city = result.city,
+            let snapshot = result.snapshot
+          else {
+            return result.city
+          }
+          guard let appliedCity = city.applying(snapshot, at: now),
+            appliedCity.widgetCurrentIssue == nil
+          else {
+            return city.markingUnavailable(.missingForecastData(at: now))
+          }
+          return appliedCity
+        }())
       )
     ]
     entries.append(
       contentsOf: futureDates.sorted().map {
         SunnyHoursLockScreenEntry(
           date: $0,
-          city: displayCity(for: result, at: $0)
+          city: ({ (date: Date) -> WidgetDataCity? in
+            guard let city = result.city,
+              let snapshot = result.snapshot
+            else {
+              return result.city
+            }
+            guard let appliedCity = city.applying(snapshot, at: date),
+              appliedCity.widgetCurrentIssue == nil
+            else {
+              return city.markingUnavailable(.missingForecastData(at: date))
+            }
+            return appliedCity
+          })($0)
         )
       }
     )
@@ -1159,22 +1215,6 @@ enum WidgetTimelinePlanner {
   /// A complete response remains displayable for the same hard 24-hour cache
   /// lifetime used by the main app. Day-specific payload promotion happens
   /// when each entry is built, so local midnight is no longer an expiry.
-  private static func snapshotDisplayExpiry(
-    _ snapshot: WidgetWeatherSnapshot,
-    relativeTo now: Date
-  ) -> Date? {
-    guard
-      snapshot.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
-        != nil,
-      snapshot.representedLocalDate != nil
-    else {
-      return nil
-    }
-    let expiry = snapshot.fetchedAt.addingTimeInterval(
-      WidgetForecastCachePolicy.retentionInterval
-    )
-    return expiry > now ? expiry : nil
-  }
 }
 
 // MARK: - Forecast Cache Policy
@@ -1266,20 +1306,6 @@ struct WidgetWeatherSnapshot: Codable, Hashable, Sendable {
       }
   }
 
-  /// Validates current-day fields against the destination's calendar rather
-  /// than the device's time zone. Cache reads and timeline expiry share this
-  /// single definition so they cannot disagree at a local-day boundary.
-  func representsLocalDay(containing date: Date) -> Bool {
-    guard let timeZoneIdentifier,
-      let timeZone = TimeZone(identifier: timeZoneIdentifier),
-      let representedLocalDate
-    else {
-      return false
-    }
-    var calendar = Calendar.current
-    calendar.timeZone = timeZone
-    return calendar.isDate(representedLocalDate, inSameDayAs: date)
-  }
 }
 
 // MARK: - Extension-Private Forecast Storage
@@ -1298,53 +1324,7 @@ enum WidgetForecastStore {
 
   // MARK: - Snapshot Reads
 
-  /// Reads a canonical UUID cache first, then any legacy App Intent aliases.
-  /// The caller validates each candidate before lookup stops, so an obsolete
-  /// snapshot under the canonical key cannot hide a matching legacy response.
-  static func freshSnapshot(
-    forAny cityIDs: [String],
-    now: Date = .now,
-    matching isValidCandidate: (WidgetWeatherSnapshot) -> Bool
-  ) -> WidgetWeatherSnapshot? {
-    firstMatchingSnapshot(
-      forAny: cityIDs,
-      now: now,
-      maximumAge: WidgetForecastCachePolicy.freshnessInterval,
-      matching: isValidCandidate
-    )
-  }
-
-  /// Applies the same canonical-then-legacy candidate validation to the
-  /// bounded offline fallback window used after a direct request fails.
-  static func fallbackSnapshot(
-    forAny cityIDs: [String],
-    now: Date = .now,
-    matching isValidCandidate: (WidgetWeatherSnapshot) -> Bool
-  ) -> WidgetWeatherSnapshot? {
-    firstMatchingSnapshot(
-      forAny: cityIDs,
-      now: now,
-      maximumAge: nil,
-      matching: isValidCandidate
-    )
-  }
-
   // MARK: - Snapshot Writes
-
-  /// Writes only a successful widget-owned WeatherKit response.
-  static func save(_ snapshot: WidgetWeatherSnapshot, for cityID: String) {
-    guard let data = try? JSONEncoder().encode(snapshot) else {
-      // Preserve the last successfully encoded response if replacement
-      // encoding ever fails.
-      return
-    }
-    UserDefaults.standard.set(
-      data,
-      forKey: ({ (cityID: String) -> String in
-
-        "\(cacheKeyPrefix)\(cityID)"
-      })(cityID))
-  }
 
   /// Removes one private response immediately. Authorization revocation uses
   /// this for Current Location so weather tied to a no-longer-authorized
@@ -1389,7 +1369,7 @@ enum WidgetForecastStore {
 
   /// Reads canonical then legacy cache identities with one shared validation
   /// path. `maximumAge == nil` selects the bounded offline fallback window.
-  private static func firstMatchingSnapshot(
+  static func firstMatchingSnapshot(
     forAny cityIDs: [String],
     now: Date,
     maximumAge: TimeInterval?,
@@ -1465,30 +1445,7 @@ actor WidgetTaskWaiter<Value: Sendable> {
   private var timeoutTask: Task<Void, Never>?
   private var cancellationRequested = false
 
-  /// Waits until the shared task finishes or this caller is cancelled.
-  func value(of task: Task<Value, Error>) async throws -> Value {
-    try await wait(
-      for: task,
-      timeout: nil,
-      timeoutFailure: nil
-    )
-  }
-
-  /// Adds a caller-specific deadline without cancelling the shared task.
-  func value<TimeoutFailure: Error & Sendable>(
-    of task: Task<Value, Error>,
-    timeout: Duration,
-    timeoutError: TimeoutFailure
-  ) async throws -> Value {
-    guard timeout > .zero else { throw timeoutError }
-    return try await wait(
-      for: task,
-      timeout: timeout,
-      timeoutFailure: timeoutError
-    )
-  }
-
-  private func wait(
+  func wait(
     for task: Task<Value, Error>,
     timeout: Duration?,
     timeoutFailure: Error?
@@ -1551,10 +1508,13 @@ actor WidgetTaskWaiter<Value: Sendable> {
     continuation.resume(with: result)
   }
 
+  /// Actor-isolated cancellation hop used from the nonisolated cancellation
+  /// handler above. This boundary cannot be inlined without losing isolation.
   private func cancel() {
     cancellationRequested = true
     finish(.failure(CancellationError()))
   }
+
 }
 
 /// Coalesces equal requests while preserving cancellation for each caller.
@@ -1615,15 +1575,19 @@ actor WidgetRequestCoordinator<Key: Hashable & Sendable, Value: Sendable> {
     }
 
     do {
-      let value = try await WidgetTaskWaiter<Value>().value(
-        of: request.task
+      let value = try await WidgetTaskWaiter<Value>().wait(
+        for: request.task,
+        timeout: nil,
+        timeoutFailure: nil
       )
       try Task.checkCancellation()
-      complete(
-        key: key,
-        requestID: request.id,
-        value: value
-      )
+      if inFlight[key]?.id == request.id {
+        recentlyCompleted[key] = CompletedRequest(
+          value: value,
+          completedAt: ContinuousClock.now
+        )
+        inFlight[key] = nil
+      }
       return value
     } catch is CancellationError {
       removeWaiter(
@@ -1642,19 +1606,6 @@ actor WidgetRequestCoordinator<Key: Hashable & Sendable, Value: Sendable> {
       )
       throw error
     }
-  }
-
-  private func complete(
-    key: Key,
-    requestID: UUID,
-    value: Value
-  ) {
-    guard inFlight[key]?.id == requestID else { return }
-    recentlyCompleted[key] = CompletedRequest(
-      value: value,
-      completedAt: ContinuousClock.now
-    )
-    inFlight[key] = nil
   }
 
   private func removeWaiter(
@@ -1873,10 +1824,11 @@ actor WidgetWeatherOperationCoordinator {
       }
     }
 
-    let response = try await WidgetTaskWaiter<WidgetWeatherKitResponse>().value(
-      of: operation.task,
+    guard timeout > .zero else { throw WidgetWeatherFetchError.timedOut }
+    let response = try await WidgetTaskWaiter<WidgetWeatherKitResponse>().wait(
+      for: operation.task,
       timeout: timeout,
-      timeoutError: WidgetWeatherFetchError.timedOut
+      timeoutFailure: WidgetWeatherFetchError.timedOut
     )
     try Task.checkCancellation()
     return response
@@ -1902,6 +1854,8 @@ actor WidgetWeatherOperationCoordinator {
     }
   }
 
+  /// Actor-isolated timeout mutation invoked from the detached expiry task.
+  /// It cannot be inlined without accessing actor state from that task.
   private func expire(
     key: WidgetWeatherOperationKey,
     operationID: UUID
@@ -2222,14 +2176,27 @@ enum WidgetWeatherSnapshotBuilder {
       calendar.startOfDay(for: $0.date)
     }
     // Retain each daylight record's source condition and symbol unchanged.
-    let currentHourlyConditions = widgetForecastHourlyConditions(
-      hours: daylightHoursByDay[currentLocalDay] ?? [],
-      calendar: calendar
-    )
-    let currentDayWeatherConditions = widgetForecastHourlyConditions(
-      hours: currentDayHours,
-      calendar: calendar
-    )
+    let currentHourlyConditions = (daylightHoursByDay[currentLocalDay] ?? []).map {
+      forecast in
+      WidgetHourlyCondition(
+        date: forecast.date,
+        hour: calendar.component(.hour, from: forecast.date),
+        weather: WidgetWeatherPresentation(
+          condition: AppWeatherCondition(weatherKit: forecast.condition),
+          symbolName: forecast.symbolName
+        )
+      )
+    }
+    let currentDayWeatherConditions = currentDayHours.map { forecast in
+      WidgetHourlyCondition(
+        date: forecast.date,
+        hour: calendar.component(.hour, from: forecast.date),
+        weather: WidgetWeatherPresentation(
+          condition: AppWeatherCondition(weatherKit: forecast.condition),
+          symbolName: forecast.symbolName
+        )
+      )
+    }
     let currentDayForecast = forecastDays.first {
       calendar.startOfDay(for: $0.date) == currentLocalDay
     }
@@ -2243,14 +2210,27 @@ enum WidgetWeatherSnapshotBuilder {
       // Omit a day the hourly product did not cover. An empty daylight
       // group remains valid when that covered day is a polar night.
       guard completeHoursByDay[localDay] != nil else { return nil }
-      let hourlyConditions = widgetForecastHourlyConditions(
-        hours: daylightHoursByDay[localDay] ?? [],
-        calendar: calendar
-      )
-      let hourlyWeatherConditions = widgetForecastHourlyConditions(
-        hours: completeHoursByDay[localDay] ?? [],
-        calendar: calendar
-      )
+      let hourlyConditions = (daylightHoursByDay[localDay] ?? []).map { forecast in
+        WidgetHourlyCondition(
+          date: forecast.date,
+          hour: calendar.component(.hour, from: forecast.date),
+          weather: WidgetWeatherPresentation(
+            condition: AppWeatherCondition(weatherKit: forecast.condition),
+            symbolName: forecast.symbolName
+          )
+        )
+      }
+      let hourlyWeatherConditions = (completeHoursByDay[localDay] ?? []).map {
+        forecast in
+        WidgetHourlyCondition(
+          date: forecast.date,
+          hour: calendar.component(.hour, from: forecast.date),
+          weather: WidgetWeatherPresentation(
+            condition: AppWeatherCondition(weatherKit: forecast.condition),
+            symbolName: forecast.symbolName
+          )
+        )
+      }
       return WidgetSunnyWindowDay(
         date: localDay,
         hourlyConditions: hourlyConditions,
@@ -2342,27 +2322,5 @@ enum WidgetWeatherSnapshotBuilder {
       }
       result[day] = sorted
     }
-  }
-}
-
-// MARK: - Widget Forecast Classification
-
-/// Reduces WeatherKit records to the persistent widget payload without
-/// translating their condition or replacing their source symbol.
-func widgetForecastHourlyConditions(
-  hours: [HourWeather],
-  calendar: Calendar
-) -> [WidgetHourlyCondition] {
-  hours.map { forecast in
-    let weather = WidgetWeatherPresentation(
-      condition: AppWeatherCondition(weatherKit: forecast.condition),
-      symbolName: forecast.symbolName
-    )
-    let hour = calendar.component(.hour, from: forecast.date)
-    return WidgetHourlyCondition(
-      date: forecast.date,
-      hour: hour,
-      weather: weather
-    )
   }
 }

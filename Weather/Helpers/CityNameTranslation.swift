@@ -63,7 +63,20 @@ import Foundation
       {
         catalogIdentifier = directIdentifier
       } else {
-        let key = legacyKey(for: city)
+        let key = [
+          city.name,
+          city.country,
+          String(
+            format: "%.4f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            city.latitude
+          ),
+          String(
+            format: "%.4f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            city.longitude
+          ),
+        ].joined(separator: "|")
         guard
           let resolvedIdentifier =
             document
@@ -74,11 +87,23 @@ import Foundation
         catalogIdentifier = resolvedIdentifier
       }
 
-      return localizedName(
-        forCatalogIdentifier: catalogIdentifier,
-        in: document,
-        locale: locale
-      )
+      return
+        ({
+          (catalogIdentifier: String, document: CityNameLocalizationDocument, locale: Locale)
+            -> String? in
+          guard let names = document.namesByCatalogIdentifier[catalogIdentifier] else {
+            return nil
+          }
+
+          guard
+            let localizedName = names[languageIdentifier(for: locale)]?
+              .trimmingCharacters(in: .whitespacesAndNewlines),
+            !localizedName.isEmpty
+          else {
+            return nil
+          }
+          return localizedName
+        })(catalogIdentifier, document, locale)
     }
 
     /// Looks up a literal Saved Place label through GeoNames. It first accepts
@@ -90,22 +115,49 @@ import Foundation
       locale: Locale
     ) async -> String? {
       guard let document else { return nil }
-      let normalizedSourceLabel = normalizedLabel(label)
+      let normalizedSourceLabel =
+        ((label)
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+          .folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: Locale(identifier: "en_US_POSIX")
+          )
+          .split(whereSeparator: \.isWhitespace)
+          .joined(separator: " "))
       guard !normalizedSourceLabel.isEmpty else { return nil }
 
       if let catalogIdentifier = document.namesByCatalogIdentifier
         .sorted(by: { $0.key < $1.key })
         .first(where: { _, names in
           names.values.contains {
-            normalizedLabel($0) == normalizedSourceLabel
+            (($0)
+              .trimmingCharacters(in: .whitespacesAndNewlines)
+              .folding(
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+              )
+              .split(whereSeparator: \.isWhitespace)
+              .joined(separator: " ")) == normalizedSourceLabel
           }
         })?.key
       {
-        return localizedName(
-          forCatalogIdentifier: catalogIdentifier,
-          in: document,
-          locale: locale
-        )
+        return
+          ({
+            (catalogIdentifier: String, document: CityNameLocalizationDocument, locale: Locale)
+              -> String? in
+            guard let names = document.namesByCatalogIdentifier[catalogIdentifier] else {
+              return nil
+            }
+
+            guard
+              let localizedName = names[languageIdentifier(for: locale)]?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !localizedName.isEmpty
+            else {
+              return nil
+            }
+            return localizedName
+          })(catalogIdentifier, document, locale)
       }
 
       guard
@@ -115,63 +167,26 @@ import Foundation
       else {
         return nil
       }
-      return localizedName(
-        forCatalogIdentifier: city.id,
-        in: document,
-        locale: locale
-      )
-    }
+      return
+        ({
+          (catalogIdentifier: String, document: CityNameLocalizationDocument, locale: Locale)
+            -> String? in
+          guard let names = document.namesByCatalogIdentifier[catalogIdentifier] else {
+            return nil
+          }
 
-    private static func localizedName(
-      forCatalogIdentifier catalogIdentifier: String,
-      in document: CityNameLocalizationDocument,
-      locale: Locale
-    ) -> String? {
-      guard let names = document.namesByCatalogIdentifier[catalogIdentifier] else {
-        return nil
-      }
-
-      guard
-        let localizedName = names[languageIdentifier(for: locale)]?
-          .trimmingCharacters(in: .whitespacesAndNewlines),
-        !localizedName.isEmpty
-      else {
-        return nil
-      }
-      return localizedName
+          guard
+            let localizedName = names[languageIdentifier(for: locale)]?
+              .trimmingCharacters(in: .whitespacesAndNewlines),
+            !localizedName.isEmpty
+          else {
+            return nil
+          }
+          return localizedName
+        })(city.id, document, locale)
     }
 
     // MARK: - Resource Key Normalization
-
-    private static func normalizedLabel(_ label: String) -> String {
-      label
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-        .folding(
-          options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-          locale: Locale(identifier: "en_US_POSIX")
-        )
-        .split(whereSeparator: \.isWhitespace)
-        .joined(separator: " ")
-    }
-
-    /// Uses the format of the generated catalog rather than a localized number
-    /// formatter, so a key remains stable regardless of the current language.
-    static func legacyKey(for city: City) -> String {
-      [
-        city.name,
-        city.country,
-        String(
-          format: "%.4f",
-          locale: Locale(identifier: "en_US_POSIX"),
-          city.latitude
-        ),
-        String(
-          format: "%.4f",
-          locale: Locale(identifier: "en_US_POSIX"),
-          city.longitude
-        ),
-      ].joined(separator: "|")
-    }
 
     /// Collapses regional locale variants onto the language keys generated in
     /// the bundled document, while preserving Simplified/Traditional Chinese.
@@ -225,19 +240,6 @@ import Foundation
             ?? Locale.autoupdatingCurrent.identifier
         )
       )
-    }
-
-    /// A richer reverse-geocoded locality remains the intended report heading.
-    /// Catalog cities have no title variant, so their heading follows the same
-    /// localized city label as ordinary presentation.
-    func localizedTitleDisplayName(locale: Locale) -> String {
-      let trimmedTitle =
-        titleName?.trimmingCharacters(
-          in: .whitespacesAndNewlines
-        ) ?? ""
-      return trimmedTitle.isEmpty
-        ? localizedDisplayName(locale: locale)
-        : trimmedTitle
     }
 
   }

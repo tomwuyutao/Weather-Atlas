@@ -56,9 +56,14 @@ struct YourLocationView: View {
       // Pull-to-refresh repeats a nearby search only after the initial
       // location task has established that feature's first result set.
       let refreshesNearby = model.didSearchNearby
-      await model.loadSavedWeather(
+      await model.weatherStore.load(
+        cities: model.placesStore.allPlaces.map(\.city),
         forceRefresh: true
       )
+      let resolvedCities = model.placesStore.allPlaces.compactMap { place in
+        model.weatherStore.weather(for: place.id)?.city
+      }.filter(PlacesLibraryValidator.isValidCity)
+      _ = try? model.placesStore.savePlaces(resolvedCities)
       await model.ensureCurrentLocationWeather(
         forceRefresh: true,
         locale: locale

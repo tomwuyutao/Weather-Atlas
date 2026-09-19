@@ -95,24 +95,6 @@ struct SunnyHoursTimeline: View {
 
   /// Uses a quiet neutral tinted toward the selected report condition so
   /// inactive segments belong to the same colorful Detail canvas.
-  private var noSunTimelineColor: Color {
-    let displayedCondition = (
-      // Match by the shared calendar day rather than array position. The
-      // current location's local time zone can differ from the device's.
-      weather?.forecastIfAvailable(
-        on: selectedDate,
-        selectionCalendar: calendar
-      )).flatMap {
-        weather?.displayedCondition(for: $0)
-      }
-    guard let tone = displayedCondition?.condition?.iconTone else {
-      return theme.colors.settingsRowFill
-    }
-    return theme.colors.weatherIconColor(
-      for: tone,
-      symbolName: displayedCondition?.symbolName
-    ).interpolated(with: theme.colors.background, by: 0.86)
-  }
 
   // MARK: - Presentation and Availability States
 
@@ -147,7 +129,15 @@ struct SunnyHoursTimeline: View {
         forecast: forecast,
         data: data
       )
-    } else if isLoading || locationStatus?.isActivelyLocating == true {
+    } else if isLoading
+      || locationStatus.map({
+        [
+          LocationProviderStatus.checkingAvailability,
+          .requestingAuthorization,
+          .locating,
+        ].contains($0)
+      }) == true
+    {
       HStack(spacing: WeatherCardLayout.headerSpacing) {
         ProgressView()
           .frame(
@@ -178,24 +168,24 @@ struct SunnyHoursTimeline: View {
 
   // MARK: - Unavailable-State Copy
 
-  private var resolvedUnavailableMessage: String {
-    let message = unavailableMessage?.trimmingCharacters(
-      in: .whitespacesAndNewlines
-    )
-    guard let message, !message.isEmpty else {
-      return localizedString(
-        "Daily sunny hours are unavailable for the selected date.",
-        locale: locale
-      )
-    }
-    return message
-  }
-
   private var genericUnavailableContent: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text(resolvedUnavailableMessage)
-        .font(.callout)
-        .foregroundStyle(theme.colors.secondaryText)
+      Text(
+        ({
+          let message = unavailableMessage?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+          )
+          guard let message, !message.isEmpty else {
+            return localizedString(
+              "Daily sunny hours are unavailable for the selected date.",
+              locale: locale
+            )
+          }
+          return message
+        })()
+      )
+      .font(.callout)
+      .foregroundStyle(theme.colors.secondaryText)
 
       if let retry {
         Button("Try Again", systemImage: "arrow.clockwise") {
@@ -222,7 +212,24 @@ struct SunnyHoursTimeline: View {
       data: data,
       forecastDate: forecast.date,
       timeZone: weather.timeZone,
-      noSunColor: noSunTimelineColor
+      noSunColor: ({
+        let displayedCondition = (
+          // Match by the shared calendar day rather than array position. The
+          // current location's local time zone can differ from the device's.
+          weather.forecastIfAvailable(
+            on: selectedDate,
+            selectionCalendar: calendar
+          )).flatMap {
+            weather.displayedCondition(for: $0)
+          }
+        guard let tone = displayedCondition?.condition?.iconTone else {
+          return theme.colors.settingsRowFill
+        }
+        return theme.colors.weatherIconColor(
+          for: tone,
+          symbolName: displayedCondition?.symbolName
+        ).interpolated(with: theme.colors.background, by: 0.86)
+      })()
     )
   }
 
@@ -239,66 +246,77 @@ struct SunnyHoursTimeline: View {
     {
       switch locationStatus {
       case .denied:
-        locationMessage(
-          "Location access is off. Allow it in Settings to show your local timeline and nearest sunny place.",
-          buttonTitle: "Open Settings",
-          systemImage: "gearshape",
-          action: openSettings
-        )
+        (VStack(alignment: .leading, spacing: 12) {
+          Text(
+            ("Location access is off. Allow it in Settings to show your local timeline and nearest sunny place.")
+          )
+          .font(.callout)
+          .foregroundStyle(theme.colors.secondaryText)
+
+          Button(action: (openSettings)) {
+            Label(("Open Settings"), systemImage: ("gearshape"))
+          }
+          .weatherGlassActionStyle()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4))
       case .restricted, .servicesDisabled:
-        locationMessage(
-          "Current location is unavailable on this device.",
-          buttonTitle: "Open Settings",
-          systemImage: "gearshape",
-          action: openSettings
-        )
+        (VStack(alignment: .leading, spacing: 12) {
+          Text(("Current location is unavailable on this device."))
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+
+          Button(action: (openSettings)) {
+            Label(("Open Settings"), systemImage: ("gearshape"))
+          }
+          .weatherGlassActionStyle()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4))
       case .failed:
-        locationMessage(
-          "Current location is unavailable on this device.",
-          buttonTitle: "Try Again",
-          systemImage: "arrow.clockwise",
-          action: retry
-        )
+        (VStack(alignment: .leading, spacing: 12) {
+          Text(("Current location is unavailable on this device."))
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+
+          Button(action: (retry)) {
+            Label(("Try Again"), systemImage: ("arrow.clockwise"))
+          }
+          .weatherGlassActionStyle()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4))
       case .resolvingPlace, .ready, .readyWithoutMetadata:
-        locationMessage(
-          "Weather is temporarily unavailable.",
-          buttonTitle: "Try Again",
-          systemImage: "arrow.clockwise",
-          action: retry
-        )
+        (VStack(alignment: .leading, spacing: 12) {
+          Text(("Weather is temporarily unavailable."))
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+
+          Button(action: (retry)) {
+            Label(("Try Again"), systemImage: ("arrow.clockwise"))
+          }
+          .weatherGlassActionStyle()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4))
       case .idle, .checkingAvailability, .requestingAuthorization,
         .locating:
-        locationMessage(
-          "Use your location to see the day's sunny-hour timeline.",
-          buttonTitle: "Use Current Location",
-          systemImage: "location",
-          action: requestLocation
-        )
+        (VStack(alignment: .leading, spacing: 12) {
+          Text(("Use your location to see the day's sunny-hour timeline."))
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+
+          Button(action: (requestLocation)) {
+            Label(("Use Current Location"), systemImage: ("location"))
+          }
+          .weatherGlassActionStyle()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4))
       }
     } else {
       EmptyView()
     }
-  }
-
-  private func locationMessage(
-    _ message: LocalizedStringKey,
-    buttonTitle: LocalizedStringKey,
-    systemImage: String,
-    action: @escaping () -> Void
-  ) -> some View {
-    // All recovery states share one readable message-and-button layout.
-    VStack(alignment: .leading, spacing: 12) {
-      Text(message)
-        .font(.callout)
-        .foregroundStyle(theme.colors.secondaryText)
-
-      Button(action: action) {
-        Label(buttonTitle, systemImage: systemImage)
-      }
-      .weatherGlassActionStyle()
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.vertical, 4)
   }
 
 }
@@ -325,21 +343,20 @@ private struct DailySunnyHoursTrack: View {
 
   /// Converts app-owned hourly values into the target-neutral timeline input
   /// also used by the widget extension.
-  private var chartHours: [SunnyHoursChartHour] {
-    var cityCalendar = Calendar.current
-    cityCalendar.timeZone = timeZone
-    return data.hours.map { forecast in
-      SunnyHoursChartHour(
-        date: forecast.date,
-        hour: cityCalendar.component(.hour, from: forecast.date),
-        condition: forecast.condition
-      )
-    }
-  }
 
   var body: some View {
     SunnyHoursDiscreteCapsuleTimeline(
-      hours: chartHours,
+      hours: ({
+        var cityCalendar = Calendar.current
+        cityCalendar.timeZone = timeZone
+        return data.hours.map { forecast in
+          SunnyHoursChartHour(
+            date: forecast.date,
+            hour: cityCalendar.component(.hour, from: forecast.date),
+            condition: forecast.condition
+          )
+        }
+      })(),
       bounds: data.bounds,
       currentDate: .now,
       showsCurrentTimeMarker: ({ () -> Bool in

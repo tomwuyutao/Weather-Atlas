@@ -58,55 +58,12 @@ struct SunnyHoursChartBounds {
     ) * width
   }
 
-  /// Converts an inclusive hourly interval into a visible bar width.
-  func width(
-    for range: ClosedRange<Int>,
-    timelineWidth: CGFloat,
-    minimumWidth: CGFloat = 8
-  ) -> CGFloat {
-    let start = xPosition(for: Double(range.lowerBound), width: timelineWidth)
-    let end = xPosition(
-      for: Double(range.upperBound + 1),
-      width: timelineWidth
-    )
-    return max(end - start, minimumWidth)
-  }
-
 }
 
 // MARK: - Shared Formatting
 
 /// Formatting shared by the app and widget sunny-hours charts.
 enum SunnyHoursFormatting {
-  /// Formats the compact hour count as one localizable unit expression. The
-  /// widget reads the same key from the app-published copy so its selected
-  /// language remains independent from the device language.
-  static func hourCountLabel(_ hours: Double, locale: Locale) -> String {
-    let format: String
-    #if WEATHER_WIDGETS
-      format = WidgetDataStore.localizedText(for: "%@ h")
-    #else
-      format = localizedString("%@ h", locale: locale)
-    #endif
-    return String(
-      format: format,
-      locale: locale,
-      hourCountText(hours, locale: locale)
-    )
-  }
-
-  /// Keeps whole-hour values free of a decimal while retaining one fractional digit.
-  static func hourCountText(_ hours: Double, locale: Locale) -> String {
-    hours.formatted(
-      .number
-        .grouping(.never)
-        .precision(
-          .fractionLength(hours.rounded() == hours ? 0 : 1)
-        )
-        .locale(locale)
-    )
-  }
-
 }
 
 #if !WEATHER_WIDGETS
@@ -392,24 +349,7 @@ enum SunnyHoursFormatting {
   // MARK: - Local-Time Disclosure
 
   extension SunnyHoursFormatting {
-    static func localTimeDisclosure(
-      placeName: String,
-      timeZone: TimeZone,
-      at date: Date,
-      locale: Locale
-    ) -> String {
-      let placeName = placeName.trimmingCharacters(in: .whitespacesAndNewlines)
-      let name =
-        placeName.isEmpty
-        ? localizedString("Place", locale: locale)
-        : placeName
-      return localizedString(
-        "Times shown in \(name) local time (\(utcOffsetLabel(for: timeZone, at: date, locale: locale)))",
-        locale: locale
-      )
-    }
-
-    private static func utcOffsetLabel(
+    static func utcOffsetLabel(
       for timeZone: TimeZone,
       at date: Date,
       locale: Locale

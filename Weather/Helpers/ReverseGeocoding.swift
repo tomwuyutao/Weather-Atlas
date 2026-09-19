@@ -57,7 +57,7 @@ extension WeatherService {
   /// The order is cache → modern MapKit → established Core Location. Each
   /// later step is a graceful fallback, not a second source that overwrites a
   /// successful result from an earlier step.
-  private func resolvedPlace(for city: City) async -> ResolvedPlace? {
+  func resolvedPlace(for city: City) async -> ResolvedPlace? {
     let placeKey =
       "\(city.latitude.bitPattern):\(city.longitude.bitPattern)|\(Locale(identifier: UserDefaults.standard.string(forKey: "appLanguage") ?? Locale.autoupdatingCurrent.identifier).identifier)"
     var place = ResolvedPlace(
@@ -85,7 +85,21 @@ extension WeatherService {
       )
     }
     if place.timeZone == nil,
-      let timeZone = coordinateTimeZone(for: city)
+      let timeZone =
+        ({ (city: City) -> TimeZone? in
+          guard city.latitude.isFinite,
+            city.longitude.isFinite,
+            (-90...90).contains(city.latitude),
+            (-180...180).contains(city.longitude),
+            let identifier = Self.coordinateTimeZoneLookup?.simple(
+              latitude: Float(city.latitude),
+              longitude: Float(city.longitude)
+            )
+          else {
+            return nil
+          }
+          return TimeZone(identifier: identifier)
+        })(city)
     {
       place = ResolvedPlace(
         name: place.name,
@@ -246,54 +260,5 @@ extension WeatherService {
 
   /// Resolves only an IANA timezone from a coordinate. This stays local to
   /// the device and makes no MapKit or Core Location reverse-geocoding call.
-  private func coordinateTimeZone(for city: City) -> TimeZone? {
-    guard city.latitude.isFinite,
-      city.longitude.isFinite,
-      (-90...90).contains(city.latitude),
-      (-180...180).contains(city.longitude),
-      let identifier = Self.coordinateTimeZoneLookup?.simple(
-        latitude: Float(city.latitude),
-        longitude: Float(city.longitude)
-      )
-    else {
-      return nil
-    }
-    return TimeZone(identifier: identifier)
-  }
 
-  // MARK: - City and Time Zone Resolution
-
-  /// Resolves the user-visible city metadata and its timezone in one pass.
-  ///
-  /// A `City` can be created from a raw current-location coordinate before a
-  /// name/country is known. This method fills that metadata only when needed;
-  /// it never swaps the UUID or coordinate that other stores rely on.
-  func resolvedCityAndTimeZone(
-    for city: City
-  ) async throws -> (city: City, timeZone: TimeZone) {
-    let place = await resolvedPlace(for: city)
-    guard let timeZone = place?.timeZone else {
-      reportDeveloperWarning(
-        title: "Time Zone Missing",
-        message:
-          "No valid time zone was available for \(city.displayName) at \(city.latitude), \(city.longitude)."
-      )
-      throw WeatherServiceError.undefinedTimeZone(city: city.displayName)
-    }
-
-    return (
-      city: City(
-        id: city.id,
-        name: place?.name ?? "",
-        titleName: city.titleName,
-        country: place?.country ?? "",
-        countryISO2Code: city.countryISO2Code,
-        latitude: city.latitude,
-        longitude: city.longitude,
-        timeZoneIdentifier: timeZone.identifier,
-        catalogIdentifier: city.catalogIdentifier
-      ),
-      timeZone: timeZone
-    )
-  }
 }

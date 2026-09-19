@@ -250,19 +250,18 @@ func widgetLocalizedString(_ key: String) -> String {
 struct WidgetTextSizePolicyModifier: ViewModifier {
   @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
 
-  private var resolvedSize: DynamicTypeSize {
-    let catalog = WidgetDataStore.catalog()
-    if catalog?.followsSystemTextSize == true {
-      return min(
-        max(systemDynamicTypeSize, .small),
-        .xLarge
-      )
-    }
-    return (catalog?.textSize ?? .large).dynamicTypeSize
-  }
-
   func body(content: Content) -> some View {
-    content.dynamicTypeSize(resolvedSize)
+    content.dynamicTypeSize(
+      ({
+        let catalog = WidgetDataStore.catalog()
+        if catalog?.followsSystemTextSize == true {
+          return min(
+            max(systemDynamicTypeSize, .small),
+            .xLarge
+          )
+        }
+        return (catalog?.textSize ?? .large).dynamicTypeSize
+      })())
   }
 }
 

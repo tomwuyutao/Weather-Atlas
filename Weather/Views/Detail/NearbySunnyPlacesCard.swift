@@ -42,18 +42,6 @@ struct NearbySunnyPlacesCard: View {
 
   /// The card can be waiting while its task runs or while its origin is being
   /// handed to the search. Both phases use the same compact loading layout.
-  private var showsLoadingContent: Bool {
-    (
-      // `WeatherModel` has already excluded places that do not improve on the
-      // reference place's sunny-hour total. This report is only a compact
-      // preview; the Map receives the full eligible result list through the
-      // action closure when the person wants to explore more choices.
-      Array(recommendations.prefix(Self.maxRecommendations))).isEmpty
-      && (isLoading
-        || ((!requiresCurrentLocation || locationStatus.hasResolvedCoordinate)
-          && !hasCompletedSearch
-          && errorMessage == nil))
-  }
 
   // MARK: - Presentation
 
@@ -134,39 +122,79 @@ struct NearbySunnyPlacesCard: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .center)
       }
-    } else if showsLoadingContent {
-      loadingContent
+    } else if (
+      // `WeatherModel` has already excluded places that do not improve on the
+      // reference place's sunny-hour total. This report is only a compact
+      // preview; the Map receives the full eligible result list through the
+      // action closure when the person wants to explore more choices.
+      Array(recommendations.prefix(Self.maxRecommendations))).isEmpty
+      && (isLoading
+        || ((!requiresCurrentLocation
+          || [LocationProviderStatus.ready, .readyWithoutMetadata].contains(locationStatus))
+          && !hasCompletedSearch
+          && errorMessage == nil))
+    {
+      (HStack(spacing: WeatherCardLayout.headerSpacing) {
+        ProgressView()
+          .frame(
+            width: WeatherCardLayout.leadingIconWidth,
+            alignment: .leading
+          )
+
+        Text("Loading nearby sunnier places…")
+          .font(.callout)
+          .foregroundStyle(theme.colors.secondaryText)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading))
 
     } else if let errorMessage {
       Text(errorMessage)
         .font(.callout)
         .foregroundStyle(theme.colors.secondaryText)
         .frame(maxWidth: .infinity, alignment: .leading)
-    } else if requiresCurrentLocation && locationStatus.requiresSettings {
-      messageWithAction(
-        locationStatus == .denied
-          ? localizedString(
-            "Location access is off. Allow it in Settings to show your local timeline and nearby sunnier places.",
+    } else if requiresCurrentLocation
+      && [LocationProviderStatus.denied, .restricted, .servicesDisabled].contains(locationStatus)
+    {
+      (VStack(alignment: .leading, spacing: 12) {
+        Text(
+          (locationStatus == .denied
+            ? localizedString(
+              "Location access is off. Allow it in Settings to show your local timeline and nearby sunnier places.",
+              locale: locale
+            )
+            : localizedString(
+              "Current location is unavailable on this device.",
+              locale: locale
+            ))
+        )
+        .font(.callout)
+        .foregroundStyle(theme.colors.secondaryText)
+
+        Button(action: (openSettings)) {
+          Label(("Open Settings"), systemImage: ("gearshape"))
+        }
+        .weatherGlassActionStyle()
+      }
+      .frame(maxWidth: .infinity, alignment: .leading))
+    } else if requiresCurrentLocation
+      && ![LocationProviderStatus.ready, .readyWithoutMetadata].contains(locationStatus)
+    {
+      (VStack(alignment: .leading, spacing: 12) {
+        Text(
+          (localizedString(
+            "Use your location to find nearby places with more sunny hours.",
             locale: locale
-          )
-          : localizedString(
-            "Current location is unavailable on this device.",
-            locale: locale
-          ),
-        actionTitle: "Open Settings",
-        systemImage: "gearshape",
-        action: openSettings
-      )
-    } else if requiresCurrentLocation && !locationStatus.hasResolvedCoordinate {
-      messageWithAction(
-        localizedString(
-          "Use your location to find nearby places with more sunny hours.",
-          locale: locale
-        ),
-        actionTitle: "Use Current Location",
-        systemImage: "location",
-        action: requestLocation
-      )
+          ))
+        )
+        .font(.callout)
+        .foregroundStyle(theme.colors.secondaryText)
+
+        Button(action: (requestLocation)) {
+          Label(("Use Current Location"), systemImage: ("location"))
+        }
+        .weatherGlassActionStyle()
+      }
+      .frame(maxWidth: .infinity, alignment: .leading))
     } else if hasCompletedSearch {
       Text(
         localizedString(
@@ -178,26 +206,22 @@ struct NearbySunnyPlacesCard: View {
       .foregroundStyle(theme.colors.secondaryText)
       .frame(maxWidth: .infinity, alignment: .leading)
     } else {
-      loadingContent
+      (HStack(spacing: WeatherCardLayout.headerSpacing) {
+        ProgressView()
+          .frame(
+            width: WeatherCardLayout.leadingIconWidth,
+            alignment: .leading
+          )
+
+        Text("Loading nearby sunnier places…")
+          .font(.callout)
+          .foregroundStyle(theme.colors.secondaryText)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading))
     }
   }
 
   // MARK: - Recommendation Rows and Recovery Actions
-
-  private var loadingContent: some View {
-    HStack(spacing: WeatherCardLayout.headerSpacing) {
-      ProgressView()
-        .frame(
-          width: WeatherCardLayout.leadingIconWidth,
-          alignment: .leading
-        )
-
-      Text("Loading nearby sunnier places…")
-        .font(.callout)
-        .foregroundStyle(theme.colors.secondaryText)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
 
   private func resultRow(
     _ recommendation: NearestSunnyPlaceResult
@@ -249,10 +273,19 @@ struct NearbySunnyPlacesCard: View {
         Spacer(minLength: 8)
 
         Text(
-          SunnyHoursFormatting.hourCountLabel(
-            recommendation.recommendation.sunnyHourCount,
-            locale: locale
-          )
+          ({ () -> String in
+            let hours = recommendation.recommendation.sunnyHourCount
+            return String(
+              format: localizedString("%@ h", locale: locale),
+              locale: locale,
+              hours.formatted(
+                .number
+                  .grouping(.never)
+                  .precision(.fractionLength(hours.rounded() == hours ? 0 : 1))
+                  .locale(locale)
+              )
+            )
+          }())
         )
         .font(.body)
         .monospacedDigit()
@@ -289,27 +322,6 @@ struct NearbySunnyPlacesCard: View {
     )
   }
 
-  private func messageWithAction(
-    _ message: String,
-    actionTitle: LocalizedStringKey,
-    systemImage: String,
-    action: @escaping () -> Void
-  ) -> some View {
-    // Permission, error, and empty-search states share the same recovery
-    // layout; callers vary only the explanatory text and action.
-    VStack(alignment: .leading, spacing: 12) {
-      Text(message)
-        .font(.callout)
-        .foregroundStyle(theme.colors.secondaryText)
-
-      Button(action: action) {
-        Label(actionTitle, systemImage: systemImage)
-      }
-      .weatherGlassActionStyle()
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
 }
 
 // MARK: - Xcode Previews
@@ -338,34 +350,3 @@ struct NearbySunnyPlacesCard: View {
     .preferredColorScheme(.light)
   }
 #endif
-
-// MARK: - Search Readiness
-
-/// A coordinate is enough to search nearby cities even if reverse-geocoded
-/// place metadata has not arrived yet.
-extension LocationProviderStatus {
-  /// Authorization or service restrictions cannot be repaired by issuing
-  /// another Core Location request, so route the person to system Settings.
-  fileprivate var requiresSettings: Bool {
-    switch self {
-    case .denied, .restricted, .servicesDisabled:
-      true
-    case .idle, .checkingAvailability, .requestingAuthorization,
-      .locating, .resolvingPlace, .ready,
-      .readyWithoutMetadata, .failed:
-      false
-    }
-  }
-
-  fileprivate var hasResolvedCoordinate: Bool {
-    switch self {
-    case .ready, .readyWithoutMetadata:
-      true
-    case .idle, .checkingAvailability, .requestingAuthorization,
-      .locating, .resolvingPlace, .denied, .restricted,
-      .servicesDisabled, .failed:
-      false
-    }
-  }
-
-}

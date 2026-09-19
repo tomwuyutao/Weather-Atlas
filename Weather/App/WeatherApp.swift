@@ -49,29 +49,6 @@ enum AppTextSizePolicy {
   /// Preference key used by the app-specific size menu.
   static let appLevelKey = "appTextSizeLevel"
 
-  /// Clamps either the system preference or the custom preference to the
-  /// exact Small...Large range exposed by the app.
-  static func effectiveDynamicTypeSize(
-    useSystem: Bool,
-    appLevel: Int,
-    systemCategory: UIContentSizeCategory
-  ) -> DynamicTypeSize {
-    let requestedSize =
-      useSystem
-      ? DynamicTypeSize(systemCategory) ?? .large
-      : (AppTextSizeLevel(
-        rawValue: min(
-          max(appLevel, AppTextSizeLevel.minimumSelectableRawValue),
-          AppTextSizeLevel.maximumSelectableRawValue
-        )
-      ) ?? .large).dynamicTypeSize
-
-    return min(
-      max(requestedSize, AppTextSizeLevel.small.dynamicTypeSize),
-      AppTextSizeLevel.xLarge.dynamicTypeSize
-    )
-  }
-
 }
 
 // MARK: - App Entry Point
@@ -234,10 +211,18 @@ private struct ThemeContent: View {
     // Follow System still respects the same upper bound as the app's own
     // text-size menu. Resolve the exact category before applying SwiftUI's
     // dedicated modifier so system presentations inherit the same value.
-    let effectiveDynamicTypeSize = AppTextSizePolicy.effectiveDynamicTypeSize(
-      useSystem: useSystemTextSize,
-      appLevel: appTextSizeLevel,
-      systemCategory: systemContentSizeCategory
+    let requestedDynamicTypeSize =
+      useSystemTextSize
+      ? DynamicTypeSize(systemContentSizeCategory) ?? .large
+      : (AppTextSizeLevel(
+        rawValue: min(
+          max(appTextSizeLevel, AppTextSizeLevel.minimumSelectableRawValue),
+          AppTextSizeLevel.maximumSelectableRawValue
+        )
+      ) ?? .large).dynamicTypeSize
+    let effectiveDynamicTypeSize = min(
+      max(requestedDynamicTypeSize, AppTextSizeLevel.small.dynamicTypeSize),
+      AppTextSizeLevel.xLarge.dynamicTypeSize
     )
     let effectiveContentSizeCategory = UIContentSizeCategory(effectiveDynamicTypeSize)
     ContentView(

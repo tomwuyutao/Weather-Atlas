@@ -207,8 +207,7 @@ enum MapSunQueryScope: Equatable {
 struct MapSunSearchResult: Identifiable {
   let recommendation: PlaceRecommendation
 
-  var city: City { recommendation.cityWeather.city }
-  var id: City.ID { city.id }
+  var id: City.ID { recommendation.cityWeather.city.id }
 }
 
 /// One place-scoped source issue used when Map consolidates missing values into
@@ -225,17 +224,6 @@ enum MapDataAvailabilityError: Error {
   case viewport
   case currentLocation
   case countryCatalog
-
-  func message(locale: Locale) -> String {
-    switch self {
-    case .viewport:
-      localizedString("Map area data is missing.", locale: locale)
-    case .currentLocation:
-      localizedString("Current location data is missing.", locale: locale)
-    case .countryCatalog:
-      localizedString("Country catalog data is missing.", locale: locale)
-    }
-  }
 }
 
 // MARK: - Reverse-Geocoding Metadata
@@ -328,34 +316,49 @@ struct MapView: View {
 
   /// Joins a saved place with its selected-date weather state. The canvas
   /// receives this presentation model rather than reaching into stores.
-  private var savedPresentations: [PlacesMapPlacePresentation] {
-    (placesStore.allPlaces).map { place in
-      let weather = weatherStore.weather(for: place.id)
-      return PlacesMapPlacePresentation(
-        place: place,
-        recommendation: weather.flatMap {
-          model.placeRecommendation(for: $0, on: selectedDate)
-        },
-        isLoading: weatherStore.isLoading(place.id)
-      )
-    }
-  }
 
   /// The Map is a sunny-place finder, so saved places always use the same
   /// sunny-hours ordering as Find Sun and Saved Places.
   private var sortedPresentations: [PlacesMapPlacePresentation] {
     let orderedRecommendations = PlaceRecommendation.ranked(
-      savedPresentations.compactMap(\.recommendation),
+      ((placesStore.allPlaces).map { place in
+        let weather = weatherStore.weather(for: place.id)
+        return PlacesMapPlacePresentation(
+          place: place,
+          recommendation: weather.flatMap {
+            model.placeRecommendation(for: $0, on: selectedDate)
+          },
+          isLoading: weatherStore.isLoading(place.id)
+        )
+      }).compactMap(\.recommendation),
       locale: locale
     )
     let presentationsByID = Dictionary(
-      uniqueKeysWithValues: savedPresentations.map { ($0.id, $0) }
+      uniqueKeysWithValues: ((placesStore.allPlaces).map { place in
+        let weather = weatherStore.weather(for: place.id)
+        return PlacesMapPlacePresentation(
+          place: place,
+          recommendation: weather.flatMap {
+            model.placeRecommendation(for: $0, on: selectedDate)
+          },
+          isLoading: weatherStore.isLoading(place.id)
+        )
+      }).map { ($0.id, $0) }
     )
     let ordered = orderedRecommendations.compactMap {
       presentationsByID[$0.id]
     }
     let unavailable =
-      savedPresentations
+      ((placesStore.allPlaces).map { place in
+        let weather = weatherStore.weather(for: place.id)
+        return PlacesMapPlacePresentation(
+          place: place,
+          recommendation: weather.flatMap {
+            model.placeRecommendation(for: $0, on: selectedDate)
+          },
+          isLoading: weatherStore.isLoading(place.id)
+        )
+      })
       .filter { $0.recommendation == nil }
       .sorted {
         $0.place.localizedDisplayName(locale: locale).localizedStandardCompare(
@@ -377,37 +380,9 @@ struct MapView: View {
     return cities
   }
 
-  private var previewResult: MapSunSearchResult? {
-    guard let city = router.mapPreviewCity,
-      let weather = weatherStore.weather(for: city.id),
-      let recommendation = model.placeRecommendation(
-        for: weather,
-        on: selectedDate
-      )
-    else {
-      return nil
-    }
-    return MapSunSearchResult(recommendation: recommendation)
-  }
-
   /// Direct map taps are transient, so they are not part of the normal saved
   /// presentation array. This lightweight resolver gives their shared card
   /// the same selected-date weather state without creating a fake Saved Place.
-  private func mapPlaceCardWeather(
-    for city: City
-  ) -> MapPlaceWeatherPresentation {
-    let weather = weatherStore.weather(for: city.id)
-
-    return MapPlaceWeatherPresentation(
-      recommendation: weather.flatMap {
-        model.placeRecommendation(for: $0, on: selectedDate)
-      },
-      // A missing cache entry is not by itself a loading state: it can
-      // also mean a completed failure, a selected-date gap, or a cache
-      // trim. The canvas tracks its short preloading hand-off locally.
-      isLoading: weatherStore.isLoading(city.id)
-    )
-  }
 
   /// Uses the store's semantic matcher as well as exact UUIDs so duplicate
   /// provider results cannot leave a second transient dot after saving.
@@ -424,8 +399,22 @@ struct MapView: View {
     {
       matches[previewCity.id] = savedID
     }
-    if let previewResult,
-      !results.contains(where: { $0.id == previewResult.id })
+    if let previewResult =
+      ({ () -> MapSunSearchResult? in
+        guard let city = router.mapPreviewCity,
+          let weather = weatherStore.weather(for: city.id),
+          let recommendation = model.placeRecommendation(
+            for: weather,
+            on: selectedDate
+          )
+        else {
+          return nil
+        }
+        return MapSunSearchResult(recommendation: recommendation)
+      })(),
+      !results.contains(where: {
+        $0.id == previewResult.id
+      })
     {
       results.append(previewResult)
     }
@@ -476,26 +465,6 @@ struct MapView: View {
   }
 
   // MARK: - Failure Reporting
-
-  /// Re-evaluates only when the visible Map request set or its request state
-  /// changes. Metric, daylight, and selected-date changes do not affect a
-  /// real request failure and therefore do not need another alert pass.
-  private var mapWeatherAlertContextID: String {
-    let loadingPlaceIDs =
-      mapCities
-      .filter { weatherStore.isLoading($0.id) }
-      .map(\.id.uuidString)
-      .sorted()
-      .joined(separator: ",")
-    return [
-      (mapCities
-        .map(\.id)
-        .sorted { $0.uuidString < $1.uuidString }).map(\.uuidString).joined(separator: ","),
-      String(weatherStore.weatherRevision),
-      loadingPlaceIDs,
-      router.mapPreviewCity?.id.uuidString ?? "",
-    ].joined(separator: "|")
-  }
 
   private func updateVisibleMapWeatherAlert() async {
     let alertKey = "map-visible-weather"
@@ -609,7 +578,28 @@ struct MapView: View {
           cities: mapCities
         )
       }
-      .task(id: mapWeatherAlertContextID) {
+      .task(
+        id: {
+          let loadingPlaceIDs =
+            mapCities
+            .filter { weatherStore.isLoading($0.id) }
+            .map(\.id.uuidString)
+            .sorted()
+            .joined(separator: ",")
+          let allPlaceIDs =
+            mapCities
+            .map(\.id.uuidString)
+            .sorted()
+            .joined(separator: ",")
+          let previewID = router.mapPreviewCity?.id.uuidString ?? ""
+          return [
+            allPlaceIDs,
+            String(weatherStore.weatherRevision),
+            loadingPlaceIDs,
+            previewID,
+          ].joined(separator: "|")
+        }()
+      ) {
         await updateVisibleMapWeatherAlert()
       }
       .onChange(of: selectedDate) {
@@ -619,7 +609,14 @@ struct MapView: View {
         rerankSunSearchForSelectedDate()
       }
       .onChange(of: currentViewport) {
-        resumePendingAreaSunSearchIfPossible()
+        guard pendingAreaSunSearch,
+          currentViewport != nil,
+          activeSunQuery == .area
+        else {
+          return
+        }
+        pendingAreaSunSearch = false
+        runSunSearch(.area, preservingCandidateContext: false)
       }
       .onChange(of: activeSunQuery) { oldQuery, newQuery in
         // A replacement or explicit clear ends the list presentation.
@@ -678,7 +675,15 @@ struct MapView: View {
         // request. Let the ordinary Find Sun path present its existing
         // location-specific alert instead of leaving Map loading.
         guard router.pendingMapSunHandoff != nil,
-          isTerminalCurrentLocationStatus
+          ({
+            switch model.locationProvider.status {
+            case .denied, .restricted, .servicesDisabled, .failed:
+              true
+            case .idle, .checkingAvailability, .requestingAuthorization,
+              .locating, .resolvingPlace, .ready, .readyWithoutMetadata:
+              false
+            }
+          })()
         else { return }
         consumePendingSunHandoff(
           requestID: router.mapSunQueryToken
@@ -687,7 +692,14 @@ struct MapView: View {
       .alert(
         presentedError?.title
           ?? localizedString("Unable to Update Places", locale: locale),
-        isPresented: errorIsPresented,
+        isPresented: (Binding(
+          get: { presentedError != nil },
+          set: { isPresented in
+            if !isPresented {
+              presentedError = nil
+            }
+          }
+        )),
         presenting: presentedError
       ) { _ in
         Button("OK") {
@@ -821,7 +833,18 @@ struct MapView: View {
         savedPlaceIDsByTransientResultID,
       selectedSunID: $selectedSunID,
       previewCity: router.mapPreviewCity,
-      previewResult: previewResult,
+      previewResult: ({
+        guard let city = router.mapPreviewCity,
+          let weather = weatherStore.weather(for: city.id),
+          let recommendation = model.placeRecommendation(
+            for: weather,
+            on: selectedDate
+          )
+        else {
+          return nil
+        }
+        return MapSunSearchResult(recommendation: recommendation)
+      })(),
       isPreviewWeatherLoading: ({ () -> Bool in
 
         guard let city = router.mapPreviewCity else { return false }
@@ -863,7 +886,19 @@ struct MapView: View {
       },
       mapPlaceCardWeatherRevision: ("\(weatherStore.weatherRevision)-\(selectedDate.timeIntervalSinceReferenceDate)"),
       resolveMapPlaceCardWeather: { city in
-        mapPlaceCardWeather(for: city)
+        ({ (city: City) in
+          let weather = weatherStore.weather(for: city.id)
+
+          return MapPlaceWeatherPresentation(
+            recommendation: weather.flatMap {
+              model.placeRecommendation(for: $0, on: selectedDate)
+            },
+            // A missing cache entry is not by itself a loading state: it can
+            // also mean a completed failure, a selected-date gap, or a cache
+            // trim. The canvas tracks its short preloading hand-off locally.
+            isLoading: weatherStore.isLoading(city.id)
+          )
+        })(city)
       },
       isSavedPlace: { city in
         placesStore.savedPlaceID(matching: city) != nil
@@ -896,19 +931,19 @@ struct MapView: View {
       clearSunSearch: clearSunSearch,
       saveSunResult: saveSunResult,
       saveSearchPreview: saveSearchPreview,
-      saveTappedPlace: saveTappedPlace,
-      removeSavedPlace: removeSavedPlace
-    )
-  }
-
-  private var errorIsPresented: Binding<Bool> {
-    Binding(
-      get: { presentedError != nil },
-      set: { isPresented in
-        if !isPresented {
-          presentedError = nil
+      saveTappedPlace: { city in
+        do {
+          _ = try placesStore.savePlace(city)
+          return true
+        } catch {
+          presentedError = MapUIError(
+            title: localizedString("Unable to Update Places", locale: locale),
+            message: localizedPlacesErrorDescription(error, locale: locale)
+          )
+          return false
         }
-      }
+      },
+      removeSavedPlace: removeSavedPlace
     )
   }
 
@@ -940,7 +975,15 @@ struct MapView: View {
       }()) == nil,
       !({ (requestID: Int) -> Bool in
 
-        isTerminalCurrentLocationStatus
+        ({
+          switch model.locationProvider.status {
+          case .denied, .restricted, .servicesDisabled, .failed:
+            true
+          case .idle, .checkingAvailability, .requestingAuthorization,
+            .locating, .resolvingPlace, .ready, .readyWithoutMetadata:
+            false
+          }
+        })()
           && locationRequestSunQueryToken == requestID
       })(requestID)
     {
@@ -949,7 +992,11 @@ struct MapView: View {
       // Publishing the query now gives Map its normal loading surface.
       activeSunQuery = handoff.scope
       isFindingSun = true
-      if !model.locationProvider.status.isActivelyLocating {
+      if ![
+        LocationProviderStatus.checkingAvailability,
+        .requestingAuthorization,
+        .locating,
+      ].contains(model.locationProvider.status) {
         // A Home Screen shortcut is an explicit location action, so it
         // may request first-use permission as well as refresh an
         // already-authorized coordinate.
@@ -970,15 +1017,6 @@ struct MapView: View {
   /// A terminal callback always re-evaluates a waiting hand-off. The helper
   /// above then decides whether this was the hand-off's own failed attempt or
   /// a launch-time result that deserves one explicit retry.
-  private var isTerminalCurrentLocationStatus: Bool {
-    switch model.locationProvider.status {
-    case .denied, .restricted, .servicesDisabled, .failed:
-      true
-    case .idle, .checkingAvailability, .requestingAuthorization,
-      .locating, .resolvingPlace, .ready, .readyWithoutMetadata:
-      false
-    }
-  }
 
   /// Consumes one external Map request before its specific marker, preview,
   /// or Find Sun action is applied. Advancing the generation makes any late
@@ -1036,54 +1074,87 @@ private struct MapFloatingLocationButton: View {
   @ViewBuilder
   var body: some View {
     if reduceTransparency {
-      button
-        .background(theme.colors.glassFill, in: Circle())
-        .overlay {
-          Circle().stroke(
-            theme.colors.primaryText.opacity(0.28),
-            lineWidth: 0.8
-          )
+      (Button {
+        action()
+      } label: {
+        Label {
+          Text(verbatim: locationName)
+        } icon: {
+          Image(systemName: "location.fill")
         }
-    } else if #available(iOS 26.0, *) {
-      button
-        .glassEffect(
-          isEnabled ? .regular.interactive() : .regular,
-          in: Circle()
+      }
+      .labelStyle(.iconOnly)
+      .font(.body.weight(.semibold))
+      .foregroundStyle(theme.colors.primaryText)
+      .frame(
+        width: (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight),
+        height: (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight)
+      )
+      .contentShape(Circle())
+      .buttonStyle(.plain)
+      .disabled(!isEnabled))
+      .background(theme.colors.glassFill, in: Circle())
+      .overlay {
+        Circle().stroke(
+          theme.colors.primaryText.opacity(0.28),
+          lineWidth: 0.8
         )
-    } else {
-      button
-        .background(.ultraThinMaterial, in: Circle())
-        .overlay {
-          Circle()
-            .stroke(
-              theme.colors.primaryText.opacity(0.16),
-              lineWidth: 0.6
-            )
+      }
+    } else if #available(iOS 26.0, *) {
+      (Button {
+        action()
+      } label: {
+        Label {
+          Text(verbatim: locationName)
+        } icon: {
+          Image(systemName: "location.fill")
         }
+      }
+      .labelStyle(.iconOnly)
+      .font(.body.weight(.semibold))
+      .foregroundStyle(theme.colors.primaryText)
+      .frame(
+        width: (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight),
+        height: (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight)
+      )
+      .contentShape(Circle())
+      .buttonStyle(.plain)
+      .disabled(!isEnabled))
+      .glassEffect(
+        isEnabled ? .regular.interactive() : .regular,
+        in: Circle()
+      )
+    } else {
+      (Button {
+        action()
+      } label: {
+        Label {
+          Text(verbatim: locationName)
+        } icon: {
+          Image(systemName: "location.fill")
+        }
+      }
+      .labelStyle(.iconOnly)
+      .font(.body.weight(.semibold))
+      .foregroundStyle(theme.colors.primaryText)
+      .frame(
+        width: (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight),
+        height: (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight)
+      )
+      .contentShape(Circle())
+      .buttonStyle(.plain)
+      .disabled(!isEnabled))
+      .background(.ultraThinMaterial, in: Circle())
+      .overlay {
+        Circle()
+          .stroke(
+            theme.colors.primaryText.opacity(0.16),
+            lineWidth: 0.6
+          )
+      }
     }
   }
 
-  private var button: some View {
-    Button {
-      action()
-    } label: {
-      Label {
-        Text(verbatim: locationName)
-      } icon: {
-        Image(systemName: "location.fill")
-      }
-    }
-    .labelStyle(.iconOnly)
-    .font(.body.weight(.semibold))
-    .foregroundStyle(theme.colors.primaryText)
-    .frame(
-      width: (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight),
-      height: (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight)
-    )
-    .contentShape(Circle())
-    .buttonStyle(.plain)
-    .disabled(!isEnabled)
-  }
 }
 
 // MARK: - MapKit Canvas and Interaction
@@ -1309,7 +1380,7 @@ private struct PlacesMapCanvas: View {
     }
     let candidates =
       sunCandidateCities.isEmpty
-      ? transientResults.map(\.city)
+      ? transientResults.map(\.recommendation.cityWeather.city)
       : sunCandidateCities
     return candidates.map {
       MapSunCandidatePresentation(
@@ -1357,34 +1428,6 @@ private struct PlacesMapCanvas: View {
     return theme.colors.secondaryText
   }
 
-  private func sunCandidateMarkerColor(
-    for candidate: MapSunCandidatePresentation
-  ) -> Color? {
-    // Before individual requests are registered, the query is still
-    // starting. Once at least one exists, use each candidate's exact state
-    // so a completed unavailable city does not look pending just because a
-    // sibling is still loading.
-    let isStartingSearch = isFindingSun && loadingSunCandidateIDs.isEmpty
-    return weatherMarkerColor(
-      recommendation: candidate.result?.recommendation,
-      isLoading: isStartingSearch
-        || loadingSunCandidateIDs.contains(candidate.id)
-    )
-  }
-
-  private var tappedRegionMarkerColor: Color? {
-    weatherMarkerColor(
-      recommendation: tappedRegionWeather?.recommendation,
-      isLoading: (isResolvingTappedRegion
-        || isPreloadingTappedRegionWeather
-        || tappedRegionWeather?.isLoading == true
-        // A resolved context schedules its weather task immediately after
-        // this render. Keep that intentional one-frame hand-off pending,
-        // but do not treat a non-nil unavailable presentation as loading.
-        || (tappedRegionContext != nil && tappedRegionWeather == nil))
-    ) ?? (tappedRegionContext == nil ? nil : theme.colors.secondaryText)
-  }
-
   /// Keep collision inputs limited to labels whose marker is actually on the
   /// map. This avoids a completed no-data result reserving space for a label
   /// that the current weather state deliberately omits.
@@ -1413,7 +1456,18 @@ private struct PlacesMapCanvas: View {
       index,
       candidate -> PlacesMapLabelLayoutInput? in
       guard candidate.result != nil,
-        sunCandidateMarkerColor(for: candidate) != nil
+        ({ (candidate: MapSunCandidatePresentation) in
+          // Before individual requests are registered, the query is still
+          // starting. Once at least one exists, use each candidate's exact state
+          // so a completed unavailable city does not look pending just because a
+          // sibling is still loading.
+          let isStartingSearch = isFindingSun && loadingSunCandidateIDs.isEmpty
+          return weatherMarkerColor(
+            recommendation: candidate.result?.recommendation,
+            isLoading: isStartingSearch
+              || loadingSunCandidateIDs.contains(candidate.id)
+          )
+        })(candidate) != nil
       else {
         return nil
       }
@@ -1491,7 +1545,16 @@ private struct PlacesMapCanvas: View {
       : []
     let tappedRegionInput =
       tappedRegionCoordinate != nil
-        && tappedRegionMarkerColor != nil
+        && (weatherMarkerColor(
+          recommendation: tappedRegionWeather?.recommendation,
+          isLoading: (isResolvingTappedRegion
+            || isPreloadingTappedRegionWeather
+            || tappedRegionWeather?.isLoading == true
+            // A resolved context schedules its weather task immediately after
+            // this render. Keep that intentional one-frame hand-off pending,
+            // but do not treat a non-nil unavailable presentation as loading.
+            || (tappedRegionContext != nil && tappedRegionWeather == nil))
+        ) ?? (tappedRegionContext == nil ? nil : theme.colors.secondaryText)) != nil
         && (tappedRegionContext.map { !isSavedPlace($0.city) } ?? true)
       ? tappedRegionContext.map { context in
         [
@@ -1583,22 +1646,6 @@ private struct PlacesMapCanvas: View {
       || isResolvingTappedRegion
   }
 
-  private var sunResultsTitle: String {
-    // Cached results handed off by Your Location do not create a query
-    // scope, but they still represent the same near-me result category.
-    if let sunQueryTitle {
-      return sunQueryTitle
-    }
-    if usesHomeLocation {
-      return String(
-        format: localizedString("Near %@", locale: locale),
-        locale: locale,
-        locationLabel
-      )
-    }
-    return localizedString("Near Me", locale: locale)
-  }
-
   // MARK: - Floating-Card Selection
 
   /// Only one selection card is produced at a time. The `if` order is also
@@ -1612,9 +1659,16 @@ private struct PlacesMapCanvas: View {
         // reverse-geocoded locality-and-area title. Labels, pins, and
         // saved-place rows retain the concise locality.
         displayName: selectedPresentation.place.customName
-          ?? selectedPresentation.place.city.localizedTitleDisplayName(
-            locale: locale
-          ),
+          ?? {
+            let city = selectedPresentation.place.city
+            let trimmedTitle =
+              city.titleName?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+              ) ?? ""
+            return trimmedTitle.isEmpty
+              ? city.localizedDisplayName(locale: locale)
+              : trimmedTitle
+          }(),
         weather: MapPlaceWeatherPresentation(
           recommendation: selectedPresentation.recommendation,
           isLoading: selectedPresentation.isLoading
@@ -1629,10 +1683,17 @@ private struct PlacesMapCanvas: View {
       )
     } else if let selectedSunResult {
       mapPlaceContextCard(
-        city: selectedSunResult.city,
-        displayName: selectedSunResult.city.localizedTitleDisplayName(
-          locale: locale
-        ),
+        city: selectedSunResult.recommendation.cityWeather.city,
+        displayName: {
+          let city = selectedSunResult.recommendation.cityWeather.city
+          let trimmedTitle =
+            city.titleName?.trimmingCharacters(
+              in: .whitespacesAndNewlines
+            ) ?? ""
+          return trimmedTitle.isEmpty
+            ? city.localizedDisplayName(locale: locale)
+            : trimmedTitle
+        }(),
         weather: MapPlaceWeatherPresentation(
           recommendation: selectedSunResult.recommendation,
           isLoading: false
@@ -1641,16 +1702,22 @@ private struct PlacesMapCanvas: View {
           return saveSunResult(selectedSunResult)
         },
         removeSavedPlace: {
-          removeSavedPlace(selectedSunResult.city)
+          removeSavedPlace(selectedSunResult.recommendation.cityWeather.city)
         },
         isSaved: savedPlaceIDsByTransientResultID[selectedSunResult.id] != nil,
       )
     } else if let selectedPreviewCity {
       mapPlaceContextCard(
         city: selectedPreviewCity,
-        displayName: selectedPreviewCity.localizedTitleDisplayName(
-          locale: locale
-        ),
+        displayName: {
+          let trimmedTitle =
+            selectedPreviewCity.titleName?.trimmingCharacters(
+              in: .whitespacesAndNewlines
+            ) ?? ""
+          return trimmedTitle.isEmpty
+            ? selectedPreviewCity.localizedDisplayName(locale: locale)
+            : trimmedTitle
+        }(),
         weather: resolveMapPlaceCardWeather(selectedPreviewCity),
         save: {
           return saveSearchPreview(selectedPreviewCity)
@@ -1819,28 +1886,43 @@ private struct PlacesMapCanvas: View {
       return catalogCountry
     }
 
-    let normalizedCityCountry = normalizedCountryName(city.country)
+    let normalizedCityCountry =
+      ((city.country)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .folding(
+          options: [
+            .caseInsensitive,
+            .diacriticInsensitive,
+            .widthInsensitive,
+          ],
+          locale: locale
+        ))
     guard !normalizedCityCountry.isEmpty else { return nil }
 
     return countries.first { country in
-      normalizedCountryName(country.englishName)
+      ((country.englishName)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .folding(
+          options: [
+            .caseInsensitive,
+            .diacriticInsensitive,
+            .widthInsensitive,
+          ],
+          locale: locale
+        ))
         == normalizedCityCountry
-        || normalizedCountryName(country.localizedName(locale: locale))
+        || ((country.localizedName(locale: locale))
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+          .folding(
+            options: [
+              .caseInsensitive,
+              .diacriticInsensitive,
+              .widthInsensitive,
+            ],
+            locale: locale
+          ))
           == normalizedCityCountry
     }
-  }
-
-  private func normalizedCountryName(_ value: String) -> String {
-    value
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-      .folding(
-        options: [
-          .caseInsensitive,
-          .diacriticInsensitive,
-          .widthInsensitive,
-        ],
-        locale: locale
-      )
   }
 
   /// Exactly one lower surface is rendered at a time. A selected marker has
@@ -1854,34 +1936,96 @@ private struct PlacesMapCanvas: View {
       ZStack(alignment: .bottom) {
         if #available(iOS 26.0, *) {
           GlassEffectContainer(spacing: MapCardLayout.surfaceSpacing) {
-            bottomSurface
+            if hasFloatingCard {
+              MapCard(
+                size: .large(
+                  horizontalPadding: dynamicTypeSize.isAccessibilitySize ? 12 : 18
+                ),
+                maximumWidth: UIDevice.current.userInterfaceIdiom == .pad ? 390 : 580,
+                fallbackGeometryID: Self.bottomSurfaceFallbackGeometryID,
+                glassNamespace: bottomSurfaceNamespace
+              ) {
+                activeFloatingCard
+              }
+            } else {
+              MapCard(
+                size: .small,
+                maximumWidth: UIDevice.current.userInterfaceIdiom == .pad ? 390 : 580,
+                bottomPadding: UIDevice.current.userInterfaceIdiom == .pad
+                  ? 8 : MapCardLayout.bottomPadding,
+                fallbackGeometryID: Self.bottomSurfaceFallbackGeometryID,
+                glassNamespace: bottomSurfaceNamespace
+              ) {
+                compactBottomSurface
+              }
+            }
           }
           .animation(
             .spring(response: 0.24, dampingFraction: 0.88),
             value: bottomSurfacePresentationID
           )
         } else {
-          bottomSurface
-            .animation(
-              .spring(response: 0.24, dampingFraction: 0.88),
-              value: bottomSurfacePresentationID
-            )
+          Group {
+            if hasFloatingCard {
+              MapCard(
+                size: .large(
+                  horizontalPadding: dynamicTypeSize.isAccessibilitySize ? 12 : 18
+                ),
+                maximumWidth: UIDevice.current.userInterfaceIdiom == .pad ? 390 : 580,
+                fallbackGeometryID: Self.bottomSurfaceFallbackGeometryID,
+                glassNamespace: bottomSurfaceNamespace
+              ) {
+                activeFloatingCard
+              }
+            } else {
+              MapCard(
+                size: .small,
+                maximumWidth: UIDevice.current.userInterfaceIdiom == .pad ? 390 : 580,
+                bottomPadding: UIDevice.current.userInterfaceIdiom == .pad
+                  ? 8 : MapCardLayout.bottomPadding,
+                fallbackGeometryID: Self.bottomSurfaceFallbackGeometryID,
+                glassNamespace: bottomSurfaceNamespace
+              ) {
+                compactBottomSurface
+              }
+            }
+          }
+          .animation(
+            .spring(response: 0.24, dampingFraction: 0.88),
+            value: bottomSurfacePresentationID
+          )
         }
 
         if networkConnectivity.isOffline
           && !networkConnectivity.isOfflineBannerDismissed
           && !hasFloatingCard
         {
-          mapOfflineBanner
-            // MapCard owns its bottom safe-area inset. Offset this
-            // second surface by only the capsule height and gap so
-            // its visible material lands immediately above it.
-            .padding(
-              .bottom,
-              (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight)
-                + MapCardLayout.surfaceSpacing
+          (MapCard(
+            size: .offline,
+            maximumWidth: (UIDevice.current.userInterfaceIdiom == .pad ? 390 : 580),
+            bottomPadding: (UIDevice.current.userInterfaceIdiom == .pad
+              ? 8
+              : MapCardLayout.bottomPadding),
+            fallbackGeometryID: Self.offlineBannerFallbackGeometryID,
+            glassNamespace: bottomSurfaceNamespace
+          ) {
+            OfflineBannerContent(
+              lastUpdated: latestCachedWeatherDate,
+              dismiss: {
+                networkConnectivity.isOfflineBannerDismissed = true
+              }
             )
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .padding(.horizontal, MapCardLayout.compactHorizontalPadding)
+          })
+          // MapCard owns its bottom safe-area inset. Offset this
+          // second surface by only the capsule height and gap so
+          // its visible material lands immediately above it.
+          .padding(
+            .bottom,
+            (dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight)
+              + MapCardLayout.surfaceSpacing
+          )
+          .transition(.opacity.combined(with: .move(edge: .bottom)))
         }
       }
       // The centred Find Sun surface must not define this overlay's
@@ -1913,52 +2057,6 @@ private struct PlacesMapCanvas: View {
       maxWidth: (UIDevice.current.userInterfaceIdiom == .pad ? .infinity : nil),
       alignment: .bottomTrailing
     )
-  }
-
-  private var mapOfflineBanner: some View {
-    MapCard(
-      size: .offline,
-      maximumWidth: (UIDevice.current.userInterfaceIdiom == .pad ? 390 : 580),
-      bottomPadding: (UIDevice.current.userInterfaceIdiom == .pad
-        ? 8
-        : MapCardLayout.bottomPadding),
-      fallbackGeometryID: Self.offlineBannerFallbackGeometryID,
-      glassNamespace: bottomSurfaceNamespace
-    ) {
-      OfflineBannerContent(
-        lastUpdated: latestCachedWeatherDate,
-        dismiss: {
-          networkConnectivity.isOfflineBannerDismissed = true
-        }
-      )
-      .padding(.horizontal, MapCardLayout.compactHorizontalPadding)
-    }
-  }
-
-  @ViewBuilder
-  private var bottomSurface: some View {
-    if hasFloatingCard {
-      MapCard(
-        size: .large(horizontalPadding: (dynamicTypeSize.isAccessibilitySize ? 12 : 18)),
-        maximumWidth: (UIDevice.current.userInterfaceIdiom == .pad ? 390 : 580),
-        fallbackGeometryID: Self.bottomSurfaceFallbackGeometryID,
-        glassNamespace: bottomSurfaceNamespace
-      ) {
-        activeFloatingCard
-      }
-    } else {
-      MapCard(
-        size: .small,
-        maximumWidth: (UIDevice.current.userInterfaceIdiom == .pad ? 390 : 580),
-        bottomPadding: (UIDevice.current.userInterfaceIdiom == .pad
-          ? 8
-          : MapCardLayout.bottomPadding),
-        fallbackGeometryID: Self.bottomSurfaceFallbackGeometryID,
-        glassNamespace: bottomSurfaceNamespace
-      ) {
-        compactBottomSurface
-      }
-    }
   }
 
   private var bottomSurfacePresentationID: String {
@@ -2040,7 +2138,18 @@ private struct PlacesMapCanvas: View {
     } else if !isFindingSun && sunQuerySummary != nil && !hasFloatingCard {
       sunResultsSummary
     } else {
-      findSunBanner
+      MapCapsule {
+        FindSunButton(
+          currentLocationCoordinate: locationCoordinate,
+          nearbyLocationName: usesHomeLocation ? locationLabel : nil,
+          locale: locale,
+          sessionGeneration: sunSearchGeneration,
+          findSunHere: findSunHere,
+          findSunNearMe: findSunNearMe,
+          findSunInCountry: findSunInCountry,
+          findSunInContinent: findSunInContinent
+        )
+      }
     }
   }
 
@@ -2050,26 +2159,25 @@ private struct PlacesMapCanvas: View {
   private var sunResultsSummary: some View {
     MapSunSearchCapsule(
       state: .results(
-        title: sunResultsTitle,
+        title: {
+          // Cached results handed off by Your Location do not create a query
+          // scope, but they still represent the same near-me result category.
+          if let sunQueryTitle {
+            return sunQueryTitle
+          }
+          if usesHomeLocation {
+            return String(
+              format: localizedString("Near %@", locale: locale),
+              locale: locale,
+              locationLabel
+            )
+          }
+          return localizedString("Near Me", locale: locale)
+        }(),
         showResults: showSunRanking,
         clearResults: clearSunSearch
       )
     )
-  }
-
-  private var findSunBanner: some View {
-    MapCapsule {
-      FindSunButton(
-        currentLocationCoordinate: locationCoordinate,
-        nearbyLocationName: usesHomeLocation ? locationLabel : nil,
-        locale: locale,
-        sessionGeneration: sunSearchGeneration,
-        findSunHere: findSunHere,
-        findSunNearMe: findSunNearMe,
-        findSunInCountry: findSunInCountry,
-        findSunInContinent: findSunInContinent
-      )
-    }
   }
 
   // MARK: - SwiftUI Composition
@@ -2107,7 +2215,28 @@ private struct PlacesMapCanvas: View {
         self.selectedPlaceID = nil
         pendingSavedPlaceFocusID = nil
       }
-      focusPendingSavedPlaceIfPossible()
+      guard let pendingSavedPlaceFocusID,
+        let presentation = presentations.first(where: {
+          $0.id == pendingSavedPlaceFocusID
+        })
+      else {
+        return
+      }
+      self.pendingSavedPlaceFocusID = nil
+      withAnimation(.smooth(duration: 0.35)) {
+        position = .region(
+          MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+              latitude: presentation.place.city.latitude,
+              longitude: presentation.place.city.longitude
+            ),
+            span: MKCoordinateSpan(
+              latitudeDelta: 0.35,
+              longitudeDelta: 0.35
+            )
+          )
+        )
+      }
     }
     .onChange(of: selectionResetID) {
       clearCards()
@@ -2127,19 +2256,65 @@ private struct PlacesMapCanvas: View {
         ({ () -> Void in
 
           guard let locationCoordinate else { return }
-          focus(on: locationCoordinate)
+          withAnimation(.smooth(duration: 0.35)) {
+            position = .region(
+              MKCoordinateRegion(
+                center: locationCoordinate,
+                span: Self.initialLocationSpan
+              )
+            )
+          }
         })()
       } else if let previewCity {
         selectSearchPreview(previewCity.id)
         withAnimation(.smooth(duration: 0.35)) {
-          position = .region(searchPreviewRegion(for: previewCity))
+          position = .region(
+            ({ (city: City) in
+              var region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(
+                  latitude: city.latitude,
+                  longitude: city.longitude
+                ),
+                span: Self.initialLocationSpan
+              )
+              region.center.latitude = max(
+                -90 + region.span.latitudeDelta / 2,
+                min(
+                  90 - region.span.latitudeDelta / 2,
+                  city.latitude - region.span.latitudeDelta
+                    * Self.searchPreviewVerticalBias
+                )
+              )
+              return region
+            })(previewCity))
         }
       } else {
         ({ () -> Void in
 
           guard let selectedPlaceID else { return }
           pendingSavedPlaceFocusID = selectedPlaceID
-          focusPendingSavedPlaceIfPossible()
+          guard let pendingSavedPlaceFocusID,
+            let presentation = presentations.first(where: {
+              $0.id == pendingSavedPlaceFocusID
+            })
+          else {
+            return
+          }
+          self.pendingSavedPlaceFocusID = nil
+          withAnimation(.smooth(duration: 0.35)) {
+            position = .region(
+              MKCoordinateRegion(
+                center: CLLocationCoordinate2D(
+                  latitude: presentation.place.city.latitude,
+                  longitude: presentation.place.city.longitude
+                ),
+                span: MKCoordinateSpan(
+                  latitudeDelta: 0.35,
+                  longitudeDelta: 0.35
+                )
+              )
+            )
+          }
         })()
       }
     }
@@ -2147,7 +2322,14 @@ private struct PlacesMapCanvas: View {
       ({ () -> Void in
 
         guard let locationCoordinate else { return }
-        focus(on: locationCoordinate)
+        withAnimation(.smooth(duration: 0.35)) {
+          position = .region(
+            MKCoordinateRegion(
+              center: locationCoordinate,
+              span: Self.initialLocationSpan
+            )
+          )
+        }
       })()
     }
     .onChange(of: mapPlaceCardWeatherRevision) {
@@ -2203,11 +2385,21 @@ private struct PlacesMapCanvas: View {
           // MapKit's muted standard style removes most visual
           // competition; this light semantic wash further subdues
           // the tiles while annotations remain above the overlay.
-          MapPolygon(points: baseMapWashPoints)
-            .foregroundStyle(
-              theme.colors.background.opacity(0.22)
-            )
-            .stroke(.clear, lineWidth: 0)
+          MapPolygon(
+            points: ({
+              let world = MKMapRect.world
+              return [
+                MKMapPoint(x: world.minX, y: world.minY),
+                MKMapPoint(x: world.maxX, y: world.minY),
+                MKMapPoint(x: world.maxX, y: world.maxY),
+                MKMapPoint(x: world.minX, y: world.maxY),
+              ]
+            })()
+          )
+          .foregroundStyle(
+            theme.colors.background.opacity(0.22)
+          )
+          .stroke(.clear, lineWidth: 0)
 
           ForEach(mapMarkers) { marker in
             Annotation(
@@ -2236,9 +2428,20 @@ private struct PlacesMapCanvas: View {
           }
 
           ForEach(sunCandidatePresentations) { candidate in
-            if let markerColor = sunCandidateMarkerColor(
-              for: candidate
-            ) {
+            if let markerColor =
+              ({ (candidate: MapSunCandidatePresentation) in
+                // Before individual requests are registered, the query is still
+                // starting. Once at least one exists, use each candidate's exact state
+                // so a completed unavailable city does not look pending just because a
+                // sibling is still loading.
+                let isStartingSearch = isFindingSun && loadingSunCandidateIDs.isEmpty
+                return weatherMarkerColor(
+                  recommendation: candidate.result?.recommendation,
+                  isLoading: isStartingSearch
+                    || loadingSunCandidateIDs.contains(candidate.id)
+                )
+              })(candidate)
+            {
               if let result = candidate.result {
                 Annotation(
                   "",
@@ -2315,9 +2518,28 @@ private struct PlacesMapCanvas: View {
           }
 
           if let tappedRegionCoordinate,
-            tappedRegionMarkerColor != nil,
+            (weatherMarkerColor(
+              recommendation: tappedRegionWeather?.recommendation,
+              isLoading: (isResolvingTappedRegion
+                || isPreloadingTappedRegionWeather
+                || tappedRegionWeather?.isLoading == true
+                // A resolved context schedules its weather task immediately after
+                // this render. Keep that intentional one-frame hand-off pending,
+                // but do not treat a non-nil unavailable presentation as loading.
+                || (tappedRegionContext != nil && tappedRegionWeather == nil))
+            ) ?? (tappedRegionContext == nil ? nil : theme.colors.secondaryText)) != nil,
             tappedRegionContext.map({ !isSavedPlace($0.city) }) ?? true,
-            let markerColor = tappedRegionMarkerColor
+            let markerColor =
+              (weatherMarkerColor(
+                recommendation: tappedRegionWeather?.recommendation,
+                isLoading: (isResolvingTappedRegion
+                  || isPreloadingTappedRegionWeather
+                  || tappedRegionWeather?.isLoading == true
+                  // A resolved context schedules its weather task immediately after
+                  // this render. Keep that intentional one-frame hand-off pending,
+                  // but do not treat a non-nil unavailable presentation as loading.
+                  || (tappedRegionContext != nil && tappedRegionWeather == nil))
+              ) ?? (tappedRegionContext == nil ? nil : theme.colors.secondaryText))
           {
             let annotationTitle =
               tappedRegionContext?.city
@@ -2510,7 +2732,16 @@ private struct PlacesMapCanvas: View {
         ))
     }
     if tappedRegionCoordinate != nil,
-      tappedRegionMarkerColor != nil,
+      (weatherMarkerColor(
+        recommendation: tappedRegionWeather?.recommendation,
+        isLoading: (isResolvingTappedRegion
+          || isPreloadingTappedRegionWeather
+          || tappedRegionWeather?.isLoading == true
+          // A resolved context schedules its weather task immediately after
+          // this render. Keep that intentional one-frame hand-off pending,
+          // but do not treat a non-nil unavailable presentation as loading.
+          || (tappedRegionContext != nil && tappedRegionWeather == nil))
+      ) ?? (tappedRegionContext == nil ? nil : theme.colors.secondaryText)) != nil,
       tappedRegionContext.map({ !isSavedPlace($0.city) }) ?? true,
       let tappedRegionCoordinate
     {
@@ -2539,7 +2770,18 @@ private struct PlacesMapCanvas: View {
     }
     targets += sunCandidatePresentations.compactMap { candidate in
       guard candidate.result != nil,
-        sunCandidateMarkerColor(for: candidate) != nil
+        ({ (candidate: MapSunCandidatePresentation) in
+          // Before individual requests are registered, the query is still
+          // starting. Once at least one exists, use each candidate's exact state
+          // so a completed unavailable city does not look pending just because a
+          // sibling is still loading.
+          let isStartingSearch = isFindingSun && loadingSunCandidateIDs.isEmpty
+          return weatherMarkerColor(
+            recommendation: candidate.result?.recommendation,
+            isLoading: isStartingSearch
+              || loadingSunCandidateIDs.contains(candidate.id)
+          )
+        })(candidate) != nil
       else {
         return nil
       }
@@ -2590,11 +2832,32 @@ private struct PlacesMapCanvas: View {
       let label = PlacesMapProjectedLabel(
         input: input,
         point: point,
-        size: estimatedLabelSize(for: input.name)
+        size: ({ (name: String) in
+          let preferredFont = UIFont.preferredFont(forTextStyle: .caption2)
+          let font = UIFont.systemFont(
+            ofSize: preferredFont.pointSize,
+            weight: .semibold
+          )
+          let measuredSize = (name as NSString).size(
+            withAttributes: [.font: font]
+          )
+
+          return CGSize(
+            width: min(104, max(18, ceil(measuredSize.width))) + 4,
+            height: ceil(font.lineHeight) + 2
+          )
+        })(input.name)
       )
-      return label.rect(for: placement)
-        .insetBy(dx: -4, dy: -4)
-        .contains(location)
+      return CGRect(
+        x: label.point.x - label.size.width / 2,
+        y: label.point.y
+          + (placement == .above ? -18 : placement == .below ? 18 : 0)
+          - label.size.height / 2,
+        width: label.size.width,
+        height: label.size.height
+      )
+      .insetBy(dx: -4, dy: -4)
+      .contains(location)
     }?.target
   }
 
@@ -2768,7 +3031,17 @@ private struct PlacesMapCanvas: View {
       do {
         let items = try await request.mapItems
         if let item = items.first {
-          let other = mapTapMetadata(from: item)
+          let other = MapTapPlaceMetadata(
+            locality: cleanMapTapValue(
+              item.addressRepresentations?.cityName
+                ?? item.placemark.locality
+            ),
+            countryName: cleanMapTapValue(item.placemark.country),
+            isoCountryCode: cleanMapTapValue(
+              item.placemark.isoCountryCode
+            )?.uppercased(),
+            timeZone: item.timeZone ?? item.placemark.timeZone
+          )
           metadata = MapTapPlaceMetadata(
             locality: metadata.locality ?? other.locality,
             countryName: metadata.countryName ?? other.countryName,
@@ -2812,7 +3085,14 @@ private struct PlacesMapCanvas: View {
           )
           .first
         {
-          let other = mapTapMetadata(from: placemark)
+          let other = MapTapPlaceMetadata(
+            locality: cleanMapTapValue(placemark.locality),
+            countryName: cleanMapTapValue(placemark.country),
+            isoCountryCode: cleanMapTapValue(
+              placemark.isoCountryCode
+            )?.uppercased(),
+            timeZone: placemark.timeZone
+          )
           metadata = MapTapPlaceMetadata(
             locality: metadata.locality ?? other.locality,
             countryName: metadata.countryName ?? other.countryName,
@@ -2848,34 +3128,6 @@ private struct PlacesMapCanvas: View {
       format: "%.6f, %.6f",
       coordinate.latitude,
       coordinate.longitude
-    )
-  }
-
-  @available(iOS 26.0, *)
-  private func mapTapMetadata(from item: MKMapItem) -> MapTapPlaceMetadata {
-    MapTapPlaceMetadata(
-      locality: cleanMapTapValue(
-        item.addressRepresentations?.cityName
-          ?? item.placemark.locality
-      ),
-      countryName: cleanMapTapValue(item.placemark.country),
-      isoCountryCode: cleanMapTapValue(
-        item.placemark.isoCountryCode
-      )?.uppercased(),
-      timeZone: item.timeZone ?? item.placemark.timeZone
-    )
-  }
-
-  private func mapTapMetadata(
-    from placemark: CLPlacemark
-  ) -> MapTapPlaceMetadata {
-    MapTapPlaceMetadata(
-      locality: cleanMapTapValue(placemark.locality),
-      countryName: cleanMapTapValue(placemark.country),
-      isoCountryCode: cleanMapTapValue(
-        placemark.isoCountryCode
-      )?.uppercased(),
-      timeZone: placemark.timeZone
     )
   }
 
@@ -2927,7 +3179,9 @@ private struct PlacesMapCanvas: View {
     isLocationSelected = false
     pendingSavedPlaceFocusID = nil
     clearTappedRegionContext()
-    if let city = sunSearchResults.first(where: { $0.id == id })?.city {
+    if let city = sunSearchResults.first(where: { $0.id == id })?
+      .recommendation.cityWeather.city
+    {
       recordRecentCityAccess(city)
     }
   }
@@ -2997,7 +3251,21 @@ private struct PlacesMapCanvas: View {
         return PlacesMapProjectedLabel(
           input: input,
           point: point,
-          size: estimatedLabelSize(for: input.name)
+          size: ({ (name: String) in
+            let preferredFont = UIFont.preferredFont(forTextStyle: .caption2)
+            let font = UIFont.systemFont(
+              ofSize: preferredFont.pointSize,
+              weight: .semibold
+            )
+            let measuredSize = (name as NSString).size(
+              withAttributes: [.font: font]
+            )
+
+            return CGSize(
+              width: min(104, max(18, ceil(measuredSize.width))) + 4,
+              height: ceil(font.lineHeight) + 2
+            )
+          })(input.name)
         )
       }
       .sorted {
@@ -3049,12 +3317,33 @@ private struct PlacesMapCanvas: View {
         uniqueKeysWithValues: pendingLabels.indices.map { index in
           (
             index,
-            labelPlacementCandidates(
-              for: pendingLabels[index],
-              occupiedLabelRects: occupiedLabelRects,
-              markerObstacles: markerObstacles,
-              viewportBounds: viewportBounds
-            )
+            (PlacesMapLabelPlacement.preferredOrder.compactMap {
+              placement -> PlacesMapLabelCandidate? in
+              let pendingLabel = pendingLabels[index]
+              let rect = CGRect(
+                x: pendingLabel.point.x - pendingLabel.size.width / 2,
+                y: pendingLabel.point.y
+                  + (placement == .above ? -18 : placement == .below ? 18 : 0)
+                  - pendingLabel.size.height / 2,
+                width: pendingLabel.size.width,
+                height: pendingLabel.size.height
+              )
+              guard
+                canPlaceLabel(
+                  for: rect,
+                  labelID: (pendingLabels[index]).input.id,
+                  occupiedLabelRects: (occupiedLabelRects),
+                  markerObstacles: (markerObstacles),
+                  viewportBounds: (viewportBounds)
+                )
+              else {
+                return nil
+              }
+              return PlacesMapLabelCandidate(
+                placement: placement,
+                collisionRect: rect.insetBy(dx: -1, dy: -1)
+              )
+            })
           )
         }
       )
@@ -3090,10 +3379,12 @@ private struct PlacesMapCanvas: View {
         {
           // The active marker stays identifiable even at a dense
           // overlap. Subsequent labels still avoid its fallback.
-          let fallbackRect =
-            projectedLabel
-            .rect(for: .below)
-            .insetBy(dx: -1, dy: -1)
+          let fallbackRect = CGRect(
+            x: projectedLabel.point.x - projectedLabel.size.width / 2,
+            y: projectedLabel.point.y + 18 - projectedLabel.size.height / 2,
+            width: projectedLabel.size.width,
+            height: projectedLabel.size.height
+          ).insetBy(dx: -1, dy: -1)
           newPlacements[projectedLabel.input.id] = .below
           occupiedLabelRects.append(fallbackRect)
         } else {
@@ -3128,22 +3419,6 @@ private struct PlacesMapCanvas: View {
     labelPlacements = newPlacements
   }
 
-  private func estimatedLabelSize(for name: String) -> CGSize {
-    let preferredFont = UIFont.preferredFont(forTextStyle: .caption2)
-    let font = UIFont.systemFont(
-      ofSize: preferredFont.pointSize,
-      weight: .semibold
-    )
-    let measuredSize = (name as NSString).size(
-      withAttributes: [.font: font]
-    )
-
-    return CGSize(
-      width: min(104, max(18, ceil(measuredSize.width))) + 4,
-      height: ceil(font.lineHeight) + 2
-    )
-  }
-
   private func canPlaceLabel(
     for rect: CGRect,
     labelID: City.ID,
@@ -3166,48 +3441,46 @@ private struct PlacesMapCanvas: View {
     }
   }
 
-  private func labelPlacementCandidates(
-    for projectedLabel: PlacesMapProjectedLabel,
-    occupiedLabelRects: [CGRect],
-    markerObstacles: [(id: City.ID, rect: CGRect)],
-    viewportBounds: CGRect
-  ) -> [PlacesMapLabelCandidate] {
-    PlacesMapLabelPlacement.preferredOrder.compactMap { placement in
-      let rect = projectedLabel.rect(for: placement)
-      guard
-        canPlaceLabel(
-          for: rect,
-          labelID: projectedLabel.input.id,
-          occupiedLabelRects: occupiedLabelRects,
-          markerObstacles: markerObstacles,
-          viewportBounds: viewportBounds
-        )
-      else {
-        return nil
-      }
-      return PlacesMapLabelCandidate(
-        placement: placement,
-        collisionRect: rect.insetBy(dx: -1, dy: -1)
-      )
-    }
-  }
-
   // MARK: - Camera Fitting and Marker Semantics
 
   /// Chooses a useful initial frame without fighting the user's later manual
   /// map gestures. A Search preview takes precedence over every default.
   private func initializeCamera() {
     if let previewCity {
-      position = .region(searchPreviewRegion(for: previewCity))
+      position = .region(
+        ({ (city: City) in
+          var region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+              latitude: city.latitude,
+              longitude: city.longitude
+            ),
+            span: Self.initialLocationSpan
+          )
+          region.center.latitude = max(
+            -90 + region.span.latitudeDelta / 2,
+            min(
+              90 - region.span.latitudeDelta / 2,
+              city.latitude - region.span.latitudeDelta
+                * Self.searchPreviewVerticalBias
+            )
+          )
+          return region
+        })(previewCity))
     } else if let selectedPlaceID,
       let selected = visiblePresentations.first(where: {
         $0.id == selectedPlaceID
       })
     {
       position = .region(
-        PlacesMapRegionFitting.region(
-          centeredOn: selected.place.city,
-          span: 0.35
+        MKCoordinateRegion(
+          center: CLLocationCoordinate2D(
+            latitude: selected.place.city.latitude,
+            longitude: selected.place.city.longitude
+          ),
+          span: MKCoordinateSpan(
+            latitudeDelta: 0.35,
+            longitudeDelta: 0.35
+          )
         )
       )
     } else if let locationCoordinate {
@@ -3224,62 +3497,12 @@ private struct PlacesMapCanvas: View {
       }
       position = .region(
         PlacesMapRegionFitting.region(
-          for: visiblePresentations.map(\.place.city)
-        )
-      )
-    }
-  }
-
-  private func focusPendingSavedPlaceIfPossible() {
-    guard let pendingSavedPlaceFocusID,
-      let presentation = presentations.first(where: {
-        $0.id == pendingSavedPlaceFocusID
-      })
-    else {
-      return
-    }
-    self.pendingSavedPlaceFocusID = nil
-    focus(onSavedPlace: presentation.place.city)
-  }
-
-  /// Saved-place targets use Map's existing tighter initial-target span,
-  /// while location and Search previews retain their broader orientation span.
-  private func focus(onSavedPlace city: City) {
-    withAnimation(.smooth(duration: 0.35)) {
-      position = .region(
-        PlacesMapRegionFitting.region(
-          centeredOn: city,
-          span: 0.35
-        )
-      )
-    }
-  }
-
-  private func searchPreviewRegion(for city: City) -> MKCoordinateRegion {
-    var region = MKCoordinateRegion(
-      center: CLLocationCoordinate2D(
-        latitude: city.latitude,
-        longitude: city.longitude
-      ),
-      span: Self.initialLocationSpan
-    )
-    region.center.latitude = max(
-      -90 + region.span.latitudeDelta / 2,
-      min(
-        90 - region.span.latitudeDelta / 2,
-        city.latitude - region.span.latitudeDelta
-          * Self.searchPreviewVerticalBias
-      )
-    )
-    return region
-  }
-
-  private func focus(on coordinate: CLLocationCoordinate2D) {
-    withAnimation(.smooth(duration: 0.35)) {
-      position = .region(
-        MKCoordinateRegion(
-          center: coordinate,
-          span: Self.initialLocationSpan
+          for: visiblePresentations.map { presentation in
+            CLLocationCoordinate2D(
+              latitude: presentation.place.city.latitude,
+              longitude: presentation.place.city.longitude
+            )
+          }
         )
       )
     }
@@ -3343,15 +3566,6 @@ private struct PlacesMapCanvas: View {
   }
 
   /// A native MapKit overlay spanning the complete projected world map.
-  private var baseMapWashPoints: [MKMapPoint] {
-    let world = MKMapRect.world
-    return [
-      MKMapPoint(x: world.minX, y: world.minY),
-      MKMapPoint(x: world.maxX, y: world.minY),
-      MKMapPoint(x: world.maxX, y: world.maxY),
-      MKMapPoint(x: world.minX, y: world.maxY),
-    ]
-  }
 }
 
 // MARK: - Annotation Building Blocks
@@ -3405,15 +3619,6 @@ private struct PlacesMapProjectedLabel {
   let input: PlacesMapLabelLayoutInput
   let point: CGPoint
   let size: CGSize
-
-  func rect(for placement: PlacesMapLabelPlacement) -> CGRect {
-    CGRect(
-      x: point.x - size.width / 2,
-      y: point.y + placement.verticalOffset - size.height / 2,
-      width: size.width,
-      height: size.height
-    )
-  }
 }
 
 /// One legal label position in the collision-placement pass.
@@ -3432,17 +3637,6 @@ private enum PlacesMapLabelPlacement: Equatable {
     .below,
     .above,
   ]
-
-  var verticalOffset: CGFloat {
-    switch self {
-    case .above:
-      -18
-    case .below:
-      18
-    case .hidden:
-      0
-    }
-  }
 
 }
 
@@ -3610,7 +3804,7 @@ private struct PlacesMapMarkerLabel: View {
       .minimumScaleFactor(0.7)
       .frame(maxWidth: 104)
       .fixedSize(horizontal: true, vertical: false)
-      .offset(y: placement.verticalOffset)
+      .offset(y: placement == .above ? -18 : placement == .below ? 18 : 0)
       .opacity(placement != .hidden ? 1 : 0)
       .allowsHitTesting(false)
   }
@@ -3826,33 +4020,6 @@ private struct PlacesMapSelectionRing: View {
 /// cross the International Date Line (where a naive min/max longitude fails).
 private enum PlacesMapRegionFitting {
   static func region(
-    centeredOn city: City,
-    span: CLLocationDegrees
-  ) -> MKCoordinateRegion {
-    MKCoordinateRegion(
-      center: CLLocationCoordinate2D(
-        latitude: city.latitude,
-        longitude: city.longitude
-      ),
-      span: MKCoordinateSpan(
-        latitudeDelta: span,
-        longitudeDelta: span
-      )
-    )
-  }
-
-  static func region(for cities: [City]) -> MKCoordinateRegion {
-    region(
-      for: cities.map {
-        CLLocationCoordinate2D(
-          latitude: $0.latitude,
-          longitude: $0.longitude
-        )
-      }
-    )
-  }
-
-  static func region(
     for coordinates: [CLLocationCoordinate2D]
   ) -> MKCoordinateRegion {
     precondition(!coordinates.isEmpty)
@@ -3867,12 +4034,30 @@ private enum PlacesMapRegionFitting {
     let longitudeArc = minimumLongitudeArc(
       for: coordinates.map(\.longitude)
     )
-    return paddedRegion(
-      minimumLatitude: minimumLatitude,
-      maximumLatitude: maximumLatitude,
-      centerLongitude: longitudeArc.center,
-      longitudeSpan: longitudeArc.span
-    )
+    return
+      ({
+        (
+          minimumLatitude: CLLocationDegrees, maximumLatitude: CLLocationDegrees,
+          centerLongitude: CLLocationDegrees, longitudeSpan: CLLocationDegrees
+        ) in
+        // Add breathing room and cap world-scale spans. The lower bounds avoid
+        // a single city creating an unusably tight, street-level camera.
+        let latitudeDelta = max(
+          1.2,
+          (maximumLatitude - minimumLatitude) * 1.25
+        )
+        let longitudeDelta = max(1.2, longitudeSpan * 1.25)
+        return MKCoordinateRegion(
+          center: CLLocationCoordinate2D(
+            latitude: (minimumLatitude + maximumLatitude) / 2,
+            longitude: centerLongitude
+          ),
+          span: MKCoordinateSpan(
+            latitudeDelta: min(160, latitudeDelta),
+            longitudeDelta: min(340, longitudeDelta)
+          )
+        )
+      })(minimumLatitude, maximumLatitude, longitudeArc.center, longitudeArc.span)
   }
 
   /// Expands and offsets the historical geographic fitter so all coordinates
@@ -3968,28 +4153,4 @@ private enum PlacesMapRegionFitting {
     return (center, span)
   }
 
-  private static func paddedRegion(
-    minimumLatitude: CLLocationDegrees,
-    maximumLatitude: CLLocationDegrees,
-    centerLongitude: CLLocationDegrees,
-    longitudeSpan: CLLocationDegrees
-  ) -> MKCoordinateRegion {
-    // Add breathing room and cap world-scale spans. The lower bounds avoid
-    // a single city creating an unusably tight, street-level camera.
-    let latitudeDelta = max(
-      1.2,
-      (maximumLatitude - minimumLatitude) * 1.25
-    )
-    let longitudeDelta = max(1.2, longitudeSpan * 1.25)
-    return MKCoordinateRegion(
-      center: CLLocationCoordinate2D(
-        latitude: (minimumLatitude + maximumLatitude) / 2,
-        longitude: centerLongitude
-      ),
-      span: MKCoordinateSpan(
-        latitudeDelta: min(160, latitudeDelta),
-        longitudeDelta: min(340, longitudeDelta)
-      )
-    )
-  }
 }

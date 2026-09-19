@@ -65,7 +65,7 @@ extension MapView {
   /// harmless after the user changes scope, receives a hand-off, or clears
   /// the search. A selected-date change deliberately keeps this generation:
   /// each completion is reassessed for the current selected date instead.
-  private func runSunSearch(
+  func runSunSearch(
     _ scope: MapSunQueryScope,
     preservingCandidateContext: Bool
   ) {
@@ -250,7 +250,16 @@ extension MapView {
         missingDataAlerts.report(
           key: "map-find-sun-source",
           title: localizedString("Data Missing", locale: locale),
-          message: error.message(locale: locale)
+          message: {
+            switch error {
+            case .viewport:
+              localizedString("Map area data is missing.", locale: locale)
+            case .currentLocation:
+              localizedString("Current location data is missing.", locale: locale)
+            case .countryCatalog:
+              localizedString("Country catalog data is missing.", locale: locale)
+            }
+          }()
         )
       } catch is CitiesCatalogError {
         guard generation == sunSearchID,
@@ -478,7 +487,7 @@ extension MapView {
       guard let viewport = currentViewport else {
         throw MapDataAvailabilityError.viewport
       }
-      let records = try await model.citiesCatalog.spatiallyDistinctCities(
+      let sourceRecords = try await model.citiesCatalog.cities(
         visibleIn: MKCoordinateRegion(
           center: CLLocationCoordinate2D(
             latitude: viewport.latitude,
@@ -489,8 +498,14 @@ extension MapView {
             longitudeDelta: viewport.longitudeDelta
           )
         ),
+        limit: max(
+          FindSunCitySamplingPolicy.resultLimit,
+          FindSunCitySamplingPolicy.sourceCandidateLimit
+        )
+      )
+      let records = CitiesCatalog.spatiallyDistinct(
+        sourceRecords,
         resultLimit: FindSunCitySamplingPolicy.resultLimit,
-        sourceCandidateLimit: FindSunCitySamplingPolicy.sourceCandidateLimit,
         clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
       )
       cities = records.map(resolveSearchCity)
@@ -513,32 +528,66 @@ extension MapView {
       else {
         throw MapDataAvailabilityError.currentLocation
       }
-      cities = try await sharedNearbySunCandidates(centeredAt: coordinate)
+      let sourceRecords = try await model.citiesCatalog.mostPopulousCities(
+        centeredAt: coordinate,
+        withinKilometers: Double(NearbySunSearchPolicy.radiusKilometers),
+        limit: max(
+          NearbySunSearchPolicy.candidateLimit,
+          FindSunCitySamplingPolicy.sourceCandidateLimit
+        )
+      )
+      cities = CitiesCatalog.spatiallyDistinct(
+        sourceRecords,
+        resultLimit: NearbySunSearchPolicy.candidateLimit,
+        clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
+      ).map { resolveSearchCity(from: $0.city) }
     case .nearbySunnier:
       // The Your Location CTA has already loaded this shared local pool.
       // Derive its strict current-location comparison from the cached
       // recommendations so Map shows the same eligible cities, not every
       // nearby place with nonzero sunny hours.
-      cities = model.nearbyRecommendations(
+      cities = model.rankedNearbyRecommendations(
+        from: model.nearbyCandidates,
+        comparedWith: model.locationWeather,
         on: model.forecastCalendar.startOfDay(for: selectedDate),
-        locale: locale
+        locale: locale,
+        limit: nil
       ).map(\.recommendation.cityWeather.city)
     case .nearPlace(let city):
       // A contextual map-card query keeps the same 200 km / 25-city
       // contract as Near Me. Only the center changes: it is the exact
       // city the person selected, never the device location or the
       // potentially moved map viewport.
-      cities = try await sharedNearbySunCandidates(
+      let sourceRecords = try await model.citiesCatalog.mostPopulousCities(
         centeredAt: CLLocationCoordinate2D(
           latitude: city.latitude,
           longitude: city.longitude
+        ),
+        withinKilometers: Double(NearbySunSearchPolicy.radiusKilometers),
+        limit: max(
+          NearbySunSearchPolicy.candidateLimit,
+          FindSunCitySamplingPolicy.sourceCandidateLimit
         )
       )
+      cities = CitiesCatalog.spatiallyDistinct(
+        sourceRecords,
+        resultLimit: NearbySunSearchPolicy.candidateLimit,
+        clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
+      ).map { resolveSearchCity(from: $0.city) }
     case .country(let country):
       // Country and continent catalogs provide a larger population-ranked
       // source pool, collapsed to 25 metro representatives before only
       // those candidates incur WeatherKit requests below.
-      guard !hasFatalCountryCatalogIssue else {
+      guard
+        !(CountryCityCatalog.catalog.issues.contains { issue in
+          switch issue {
+          case .resourceMissing, .unreadableResource, .noValidCities:
+            true
+          case .invalidRows:
+            false
+          }
+        })
+      else {
         throw MapDataAvailabilityError.countryCatalog
       }
       cities = CountryCityCatalog.spatiallyDistinctCities(
@@ -554,7 +603,16 @@ extension MapView {
         clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
       )
     case .continent(let continent):
-      guard !hasFatalCountryCatalogIssue else {
+      guard
+        !(CountryCityCatalog.catalog.issues.contains { issue in
+          switch issue {
+          case .resourceMissing, .unreadableResource, .noValidCities:
+            true
+          case .invalidRows:
+            false
+          }
+        })
+      else {
         throw MapDataAvailabilityError.countryCatalog
       }
       cities = CountryCityCatalog.spatiallyDistinctCities(
@@ -576,26 +634,6 @@ extension MapView {
     return cities.filter { seenIDs.insert($0.id).inserted }
   }
 
-  /// Resolves the one shared local candidate policy used by both city-origin
-  /// Map searches. `CitiesCatalog` performs the exact Haversine-radius
-  /// filter, then retains population-leading metro representatives before
-  /// WeatherKit is asked for any forecast, keeping the local search cheap.
-  private func sharedNearbySunCandidates(
-    centeredAt coordinate: CLLocationCoordinate2D
-  ) async throws -> [City] {
-    let records = try await model.citiesCatalog
-      .mostPopulousSpatiallyDistinctCities(
-        centeredAt: coordinate,
-        withinKilometers: Double(
-          NearbySunSearchPolicy.radiusKilometers
-        ),
-        resultLimit: NearbySunSearchPolicy.candidateLimit,
-        sourceCandidateLimit: FindSunCitySamplingPolicy.sourceCandidateLimit,
-        clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
-      )
-    return records.map { resolveSearchCity(from: $0.city) }
-  }
-
   /// Converts catalog data into the app's `City` value, then prefers the
   /// saved copy when it exists so map identity remains consistent everywhere.
   private func resolveSearchCity(from record: CatalogCity) -> City {
@@ -603,8 +641,15 @@ extension MapView {
     // is still an authoritative source fact; multi-zone countries fall
     // through to the local coordinate time-zone lookup in WeatherService.
     let timeZoneIdentifier =
-      CountryCityCatalog
-      .unambiguousTimeZoneIdentifier(forISO2: record.isoCountryCode)
+      ({ () -> String? in
+        let identifiers = Set(
+          CountryCityCatalog.catalog.countriesByCode[
+            record.isoCountryCode.uppercased()
+          ]?.cities.map(\.timeZoneIdentifier) ?? []
+        )
+        guard identifiers.count == 1 else { return nil }
+        return identifiers.first
+      }())
     let city = City(
       name: record.name,
       country: record.countryName,
@@ -646,31 +691,6 @@ extension MapView {
     missingDataAlerts.resolve(key: "map-find-sun-source")
   }
 
-  /// Completes a "This Area" tap that occurred during MapKit's initial
-  /// camera setup. The first completed viewport is the authoritative area;
-  /// no generic fallback location is substituted for it.
-  func resumePendingAreaSunSearchIfPossible() {
-    guard pendingAreaSunSearch,
-      currentViewport != nil,
-      activeSunQuery == .area
-    else {
-      return
-    }
-    pendingAreaSunSearch = false
-    runSunSearch(.area, preservingCandidateContext: false)
-  }
-
-  private var hasFatalCountryCatalogIssue: Bool {
-    CountryCityCatalog.catalog.issues.contains { issue in
-      switch issue {
-      case .resourceMissing, .unreadableResource, .noValidCities:
-        true
-      case .invalidRows:
-        false
-      }
-    }
-  }
-
   @discardableResult
   func saveSunResult(_ result: MapSunSearchResult) -> Bool {
     do {
@@ -698,23 +718,6 @@ extension MapView {
       let savedID = try placesStore.savePlace(city)
       acknowledgedSavedPlaceIDsByResultID[city.id] = savedID
       selectedPreviewID = city.id
-      return true
-    } catch {
-      presentedError = MapUIError(
-        title: localizedString("Unable to Update Places", locale: locale),
-        message: localizedPlacesErrorDescription(error, locale: locale)
-      )
-      return false
-    }
-  }
-
-  /// Persists a reverse-geocoded map tap without changing the canvas's
-  /// selected-context state. The shared card therefore retains its existing
-  /// MapCard identity and simply redraws its bookmark as filled.
-  @discardableResult
-  func saveTappedPlace(_ city: City) -> Bool {
-    do {
-      _ = try placesStore.savePlace(city)
       return true
     } catch {
       presentedError = MapUIError(

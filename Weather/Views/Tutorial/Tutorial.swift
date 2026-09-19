@@ -159,14 +159,6 @@ private enum TutorialStep: Int, CaseIterable, Identifiable {
 
   var id: Self { self }
 
-  var message: LocalizedStringKey {
-    switch self {
-    case .welcome:
-      "Let’s start finding sunshine for your holidays."
-    case .location:
-      "Use your current location, or choose a home location to keep using every time you open Weather Atlas."
-    }
-  }
 }
 
 struct TutorialWelcomeStage: View {
@@ -407,14 +399,47 @@ private struct TutorialStageLayout<Actions: View>: View {
       VStack(spacing: 0) {
         ScrollView {
           VStack(alignment: .leading, spacing: 16) {
-            titleSlot
+            (ZStack(alignment: .topLeading) {
+              ForEach(TutorialStep.allCases) { candidate in
+                Text(
+                  candidate == .welcome
+                    ? "Welcome to Weather Atlas"
+                    : "Set your location"
+                )
+                .hidden()
+                .accessibilityHidden(true)
+              }
 
-            Text(step.message)
-              .font(.body)
-              .foregroundStyle(palette.secondaryText)
-              .lineSpacing(4)
-              .fixedSize(horizontal: false, vertical: true)
-              .frame(maxWidth: .infinity, alignment: .leading)
+              Text(
+                step == .welcome
+                  ? "Welcome to Weather Atlas"
+                  : "Set your location"
+              )
+              .foregroundStyle(palette.titleText)
+              .accessibilityAddTraits(.isHeader)
+            }
+            .font(.system(.title, design: .serif).weight(.bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.68)
+            .allowsTightening(true)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading))
+
+            Text(
+              {
+                switch step {
+                case .welcome:
+                  "Let’s start finding sunshine for your holidays."
+                case .location:
+                  "Use your current location, or choose a home location to keep using every time you open Weather Atlas."
+                }
+              }() as LocalizedStringKey
+            )
+            .font(.body)
+            .foregroundStyle(palette.secondaryText)
+            .lineSpacing(4)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if let deviceLocationMessage {
               Label(deviceLocationMessage, systemImage: "exclamationmark.circle")
@@ -433,7 +458,17 @@ private struct TutorialStageLayout<Actions: View>: View {
 
         VStack(spacing: 24) {
           actions()
-          pageProgress
+          (HStack(spacing: 12) {
+            ForEach(TutorialStep.allCases) { candidate in
+              Circle()
+                .fill(candidate == step ? palette.titleText : palette.dotCloudy)
+                .frame(width: 8, height: 8)
+            }
+          }
+          .frame(maxWidth: .infinity)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel("Tutorial progress")
+          .accessibilityValue("Page \(step.rawValue + 1) of \(TutorialStep.allCases.count)"))
         }
         .padding(.horizontal, 32)
         .padding(.top, 12)
@@ -454,10 +489,28 @@ private struct TutorialStageLayout<Actions: View>: View {
       )
       .background {
         GeometryReader { artworkGeometry in
-          clippedArtwork(
-            in: artworkGeometry.size,
-            titleTop: textTop + geometry.safeAreaInsets.top
-          )
+          ({ (size: CGSize, titleTop: CGFloat) in
+            let radius = min(size.width * 0.56, max(48, (titleTop - 48) / 1.42))
+
+            return Group {
+              switch step {
+              case .welcome:
+                TutorialWelcomeArtwork(size: size, finalRadius: radius, phase: openingPhase)
+              case .location:
+                Image(systemName: "location.fill")
+                  .resizable()
+                  .scaledToFit()
+                  .symbolRenderingMode(.monochrome)
+                  .foregroundStyle(palette.dotSun)
+                  .frame(width: radius * 1.6, height: radius * 1.6)
+                  .position(x: size.width - radius * 0.20, y: radius * 0.72)
+              }
+            }
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .clipped()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+          })(artworkGeometry.size, textTop + geometry.safeAreaInsets.top)
         }
         .ignoresSafeArea()
       }
@@ -467,72 +520,10 @@ private struct TutorialStageLayout<Actions: View>: View {
 
   /// Decorative artwork bleeds beyond the viewport instead of taking up a
   /// slot in the text layout. Compact screens reduce it to keep copy clear.
-  private func clippedArtwork(in size: CGSize, titleTop: CGFloat) -> some View {
-    let radius = min(size.width * 0.56, max(48, (titleTop - 48) / 1.42))
-
-    return Group {
-      switch step {
-      case .welcome:
-        TutorialWelcomeArtwork(size: size, finalRadius: radius, phase: openingPhase)
-      case .location:
-        Image(systemName: "location.fill")
-          .resizable()
-          .scaledToFit()
-          .symbolRenderingMode(.monochrome)
-          .foregroundStyle(palette.dotSun)
-          .frame(width: radius * 1.6, height: radius * 1.6)
-          .position(x: size.width - radius * 0.20, y: radius * 0.72)
-      }
-    }
-    .frame(width: size.width, height: size.height, alignment: .topLeading)
-    .clipped()
-    .allowsHitTesting(false)
-    .accessibilityHidden(true)
-  }
 
   /// Measure both localized titles so their body text begins on the same
   /// baseline, including when translations or Dynamic Type need more room.
-  private var titleSlot: some View {
-    ZStack(alignment: .topLeading) {
-      ForEach(TutorialStep.allCases) { candidate in
-        Text(
-          candidate == .welcome
-            ? "Welcome to Weather Atlas"
-            : "Set your location"
-        )
-        .hidden()
-        .accessibilityHidden(true)
-      }
 
-      Text(
-        step == .welcome
-          ? "Welcome to Weather Atlas"
-          : "Set your location"
-      )
-      .foregroundStyle(palette.titleText)
-      .accessibilityAddTraits(.isHeader)
-    }
-    .font(.system(.title, design: .serif).weight(.bold))
-    .lineLimit(1)
-    .minimumScaleFactor(0.68)
-    .allowsTightening(true)
-    .fixedSize(horizontal: false, vertical: true)
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  private var pageProgress: some View {
-    HStack(spacing: 12) {
-      ForEach(TutorialStep.allCases) { candidate in
-        Circle()
-          .fill(candidate == step ? palette.titleText : palette.dotCloudy)
-          .frame(width: 8, height: 8)
-      }
-    }
-    .frame(maxWidth: .infinity)
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel("Tutorial progress")
-    .accessibilityValue("Page \(step.rawValue + 1) of \(TutorialStep.allCases.count)")
-  }
 }
 
 // MARK: - Home Location Search
@@ -832,15 +823,6 @@ enum TutorialFeatureTip: Equatable {
   case savedPlaces
   case map
 
-  var message: LocalizedStringKey {
-    switch self {
-    case .savedPlaces:
-      "Save cities you care about to compare their weather in one place."
-    case .map:
-      "Tap anywhere on the map to search that area. Or use the Find Sun button to search more broadly."
-    }
-  }
-
 }
 
 /// Centered instructional surface with the same single-action affordance on
@@ -868,15 +850,24 @@ struct TutorialFeatureTipCard: View {
           contrast: colorSchemeContrast
         )).titleText)
 
-      Text(tip.message)
-        .font(.body)
-        .foregroundStyle(
-          (AppPalette.values(
-            for: colorScheme == .light ? .dark : .light,
-            contrast: colorSchemeContrast
-          )).titleText.opacity(0.84)
-        )
-        .fixedSize(horizontal: false, vertical: true)
+      Text(
+        {
+          switch tip {
+          case .savedPlaces:
+            "Save cities you care about to compare their weather in one place."
+          case .map:
+            "Tap anywhere on the map to search that area. Or use the Find Sun button to search more broadly."
+          }
+        }() as LocalizedStringKey
+      )
+      .font(.body)
+      .foregroundStyle(
+        (AppPalette.values(
+          for: colorScheme == .light ? .dark : .light,
+          contrast: colorSchemeContrast
+        )).titleText.opacity(0.84)
+      )
+      .fixedSize(horizontal: false, vertical: true)
 
       Button(action: dismiss) {
         Text("Done")

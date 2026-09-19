@@ -90,138 +90,176 @@ struct PlaceSearchView: View {
   // MARK: - Lifecycle and Search Field
 
   var body: some View {
-    searchFieldHost
-      .safeAreaInset(edge: .top, spacing: 0) {
-        Picker("Search", selection: $router.placeSearchScope) {
-          ForEach(PlaceSearchScope.allCases) { scope in
-            Text(
-              {
-                switch scope {
-                case .city: "City"
-                case .country: "Country"
-                case .continent: "Continent"
-                }
-              }() as LocalizedStringKey
-            ).tag(scope)
-          }
-        }
-        .pickerStyle(.segmented)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(theme.colors.background)
+    Group {
+      switch searchScope {
+      case .city:
+        citySearchContent
+      case .country:
+        countrySearchContent
+      case .continent:
+        continentSearchContent
       }
-      .weatherContentColumn(standardMaximumWidth: .infinity)
-      .weatherScreenBackground()
-      .toolbar {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-          ToolbarItem(placement: .topBarLeading) {
-            Button("Settings", systemImage: "slider.horizontal.3") {
-              router.isSettingsPresented = true
-            }
-            .labelStyle(.iconOnly)
-          }
-        }
-      }
-      .task(
-        id: "\(searchScope.rawValue)|\(normalizedQuery)|\(locale.identifier)"
-      ) {
-        // SwiftUI cancels this task when the normalized query changes,
-        // which makes the debounce naturally track the latest typing.
-        guard searchScope == .city else { return }
-        await updateSearch()
-      }
-      .task(
-        id: searchScope.rawValue + "|"
-          + (({ () -> CLLocationCoordinate2D? in
-            guard let coordinate = model.locationProvider.coordinate,
-              CLLocationCoordinate2DIsValid(coordinate)
-            else {
-              return nil
-            }
-            return coordinate
-          })().map {
-            String($0.latitude) + "," + String($0.longitude)
-          } ?? "unavailable")
-          + "|" + locale.identifier
-      ) {
-        guard searchScope == .country else { return }
-        refreshCountryOptions()
-      }
-      .task(
-        id:
-          "\(searchScope.rawValue)|\(locationCountryISO2Code ?? "unavailable")|\(locale.identifier)"
-      ) {
-        guard searchScope == .city else { return }
-        refreshCountryCitySuggestions()
-      }
-      .task(id: router.selectedTab) {
-        // The system search tab may morph into its field after the
-        // screen appears, so yield once before requesting focus.
-        guard router.selectedTab == .search else { return }
-        await Task.yield()
-        guard router.selectedTab == .search,
-          searchScope == .city
-        else {
-          return
-        }
-        isSearchFocused = true
-      }
-      .onChange(of: router.placeSearchScope) { _, newScope in
-        handleScopeChange(to: newScope)
-      }
-      .onChange(of: query) { _, _ in
-        selectionGeneration &+= 1
-        selectionTask?.cancel()
-        selectionTask = nil
-        loadingID = nil
-        selectionError = nil
-      }
-      .onDisappear {
-        // A resolved place should not navigate away from a search tab
-        // the person has already left.
-        selectionGeneration &+= 1
-        selectionTask?.cancel()
-        selectionTask = nil
-        loadingID = nil
-        selectionError = nil
-        isSearchFocused = false
-      }
-      .reportingMissingData(missingDataReport)
-  }
-
-  /// One native search-field host remains mounted across every scope. Keeping
-  /// its identity stable prevents the navigation-bar field from disappearing
-  /// or shifting while the person changes search modes.
-  private var searchFieldHost: some View {
-    searchableScopeContent
-      .searchable(
-        text: $query,
-        placement: .navigationBarDrawer(displayMode: .always),
-        prompt: ({ () -> LocalizedStringKey in
-
-          switch searchScope {
-          case .city: "Search cities"
-          case .country: "Search countries"
-          case .continent: "Search continents"
-          }
-        }())
-      )
-      .searchFocused($isSearchFocused)
-  }
-
-  /// Scope content owns only its results. The enclosing view owns the one
-  /// persistent native search field, so it never appears or shifts while a
-  /// person changes between City, Country, and Continent.
-  @ViewBuilder
-  private var searchableScopeContent: some View {
-    switch searchScope {
-    case .city:
-      citySearchContent
-    case .country:
-      countrySearchContent
-    case .continent:
-      continentSearchContent
     }
+    .searchable(
+      text: $query,
+      placement: .navigationBarDrawer(displayMode: .always),
+      prompt: ({ () -> LocalizedStringKey in
+        switch searchScope {
+        case .city: "Search cities"
+        case .country: "Search countries"
+        case .continent: "Search continents"
+        }
+      }())
+    )
+    .searchFocused($isSearchFocused)
+    .safeAreaInset(edge: .top, spacing: 0) {
+      Picker("Search", selection: $router.placeSearchScope) {
+        ForEach(PlaceSearchScope.allCases) { scope in
+          Text(
+            {
+              switch scope {
+              case .city: "City"
+              case .country: "Country"
+              case .continent: "Continent"
+              }
+            }() as LocalizedStringKey
+          ).tag(scope)
+        }
+      }
+      .pickerStyle(.segmented)
+      .padding(.horizontal)
+      .padding(.vertical, 8)
+      .background(theme.colors.background)
+    }
+    .weatherContentColumn(standardMaximumWidth: .infinity)
+    .weatherScreenBackground()
+    .toolbar {
+      if UIDevice.current.userInterfaceIdiom == .pad {
+        ToolbarItem(placement: .topBarLeading) {
+          Button("Settings", systemImage: "slider.horizontal.3") {
+            router.isSettingsPresented = true
+          }
+          .labelStyle(.iconOnly)
+        }
+      }
+    }
+    .task(
+      id: "\(searchScope.rawValue)|\(normalizedQuery)|\(locale.identifier)"
+    ) {
+      // SwiftUI cancels this task when the normalized query changes,
+      // which makes the debounce naturally track the latest typing.
+      guard searchScope == .city else { return }
+      await updateSearch()
+    }
+    .task(
+      id: searchScope.rawValue + "|"
+        + (({ () -> CLLocationCoordinate2D? in
+          guard let coordinate = model.locationProvider.coordinate,
+            CLLocationCoordinate2DIsValid(coordinate)
+          else {
+            return nil
+          }
+          return coordinate
+        })().map {
+          String($0.latitude) + "," + String($0.longitude)
+        } ?? "unavailable")
+        + "|" + locale.identifier
+    ) {
+      guard searchScope == .country else { return }
+      refreshCountryOptions()
+    }
+    .task(
+      id: ({ () -> String in
+        let countryCode =
+          ({ () -> String? in
+            for candidate in [
+              model.homeLocation?.countryISO2Code,
+              model.locationProvider.metadata?.isoCountryCode,
+              model.locationCity?.countryISO2Code,
+            ] {
+              guard let code = candidate?.uppercased(),
+                CountryCityCatalog.country(iso2: code) != nil
+              else { continue }
+              return code
+            }
+            return nil
+          }()) ?? "unavailable"
+        return "\(searchScope.rawValue)|\(countryCode)|\(locale.identifier)"
+      }())
+    ) {
+      guard searchScope == .city else { return }
+      guard
+        let countryCode =
+          ({ () -> String? in
+            for candidate in [
+              model.homeLocation?.countryISO2Code,
+              model.locationProvider.metadata?.isoCountryCode,
+              model.locationCity?.countryISO2Code,
+            ] {
+              guard let code = candidate?.uppercased(),
+                CountryCityCatalog.country(iso2: code) != nil
+              else { continue }
+              return code
+            }
+            return nil
+          }()),
+        let country = CountryCityCatalog.country(iso2: countryCode)
+      else {
+        countryCitySuggestions = []
+        return
+      }
+      countryCitySuggestions = Array(country.cities.prefix(8)).map { entry in
+        City(
+          id: entry.id,
+          name: entry.city,
+          country: entry.country,
+          countryISO2Code: entry.iso2,
+          latitude: entry.latitude,
+          longitude: entry.longitude,
+          timeZoneIdentifier: entry.timeZoneIdentifier,
+          catalogIdentifier: entry.catalogIdentifier
+        )
+      }
+    }
+    .task(id: router.selectedTab) {
+      // The system search tab may morph into its field after the
+      // screen appears, so yield once before requesting focus.
+      guard router.selectedTab == .search else { return }
+      await Task.yield()
+      guard router.selectedTab == .search,
+        searchScope == .city
+      else {
+        return
+      }
+      isSearchFocused = true
+    }
+    .onChange(of: router.placeSearchScope) { _, newScope in
+      handleScopeChange(to: newScope)
+    }
+    .onChange(of: query) { _, _ in
+      selectionGeneration &+= 1
+      selectionTask?.cancel()
+      selectionTask = nil
+      loadingID = nil
+      selectionError = nil
+    }
+    .onDisappear {
+      // A resolved place should not navigate away from a search tab
+      // the person has already left.
+      selectionGeneration &+= 1
+      selectionTask?.cancel()
+      selectionTask = nil
+      loadingID = nil
+      selectionError = nil
+      isSearchFocused = false
+    }
+    .modifier(
+      MissingDataAlertReportingModifier(
+        report: missingDataReport,
+        recoveryKey: nil,
+        retry: nil
+      )
+    )
   }
 
   private var searchScope: PlaceSearchScope {
@@ -271,7 +309,24 @@ struct PlaceSearchView: View {
     {
       ContentUnavailableView.search(text: normalizedQuery)
     } else {
-      resultsList
+      (List {
+        providerSection(
+          "Apple Maps",
+          results: searchManager.appleResults,
+          isSearching: searchManager.isAppleSearching,
+          errorMessage: searchManager.appleErrorMessage
+        )
+
+        providerSection(
+          "Open-Meteo",
+          results: searchManager.openMeteoResults,
+          isSearching: searchManager.isOpenMeteoSearching,
+          errorMessage: searchManager.openMeteoErrorMessage
+        )
+      }
+      .listStyle(.insetGrouped)
+      .scrollDismissesKeyboard(.interactively)
+      .weatherScrollableBackground())
     }
   }
 
@@ -466,26 +521,6 @@ struct PlaceSearchView: View {
 
   /// Separate sections preserve each provider's provenance instead of
   /// silently merging heterogeneous geographic results into one list.
-  private var resultsList: some View {
-    List {
-      providerSection(
-        "Apple Maps",
-        results: searchManager.appleResults,
-        isSearching: searchManager.isAppleSearching,
-        errorMessage: searchManager.appleErrorMessage
-      )
-
-      providerSection(
-        "Open-Meteo",
-        results: searchManager.openMeteoResults,
-        isSearching: searchManager.isOpenMeteoSearching,
-        errorMessage: searchManager.openMeteoErrorMessage
-      )
-    }
-    .listStyle(.insetGrouped)
-    .scrollDismissesKeyboard(.interactively)
-    .weatherScrollableBackground()
-  }
 
   private var countryCitySuggestionsList: some View {
     List {
@@ -636,7 +671,18 @@ struct PlaceSearchView: View {
   /// appears twice on the same screen.
   private var recentCitySuggestions: [City] {
     Array(
-      model.recentCitySuggestions.prefix(
+      model.recentSearches.cities.filter { city in
+        model.placesStore.savedPlaceID(matching: city) == nil
+          && {
+            guard let currentLocationPlaceCity = model.currentLocationPlaceCity else {
+              return true
+            }
+            return !CurrentLocationCityMatcher.matches(
+              city,
+              currentLocation: currentLocationPlaceCity
+            )
+          }()
+      }.prefix(
         RecentSearchStore.maximumSuggestionCount
       )
     )
@@ -665,22 +711,6 @@ struct PlaceSearchView: View {
           country.matchesSearchQuery(normalizedQuery, locale: locale)
         }
       }()).filter { !recentIDs.contains($0.id) }
-  }
-
-  private var locationCountryISO2Code: String? {
-    for candidate in [
-      model.homeLocation?.countryISO2Code,
-      model.locationProvider.metadata?.isoCountryCode,
-      model.locationCity?.countryISO2Code,
-    ] {
-      guard let code = candidate?.uppercased(),
-        CountryCityCatalog.country(iso2: code) != nil
-      else {
-        continue
-      }
-      return code
-    }
-    return nil
   }
 
   private func geographicScopeHeader(
@@ -781,19 +811,6 @@ struct PlaceSearchView: View {
     )
     allCountries = countries
     hasLoadedCountries = true
-  }
-
-  @MainActor
-  private func refreshCountryCitySuggestions() {
-    guard let locationCountryISO2Code,
-      let country = CountryCityCatalog.country(
-        iso2: locationCountryISO2Code
-      )
-    else {
-      countryCitySuggestions = []
-      return
-    }
-    countryCitySuggestions = Array(country.cities.prefix(8)).map(\.appCity)
   }
 
   // MARK: - Provider Search Timing

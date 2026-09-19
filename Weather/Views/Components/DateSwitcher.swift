@@ -126,26 +126,6 @@ struct TopForecastDateSwitcher: View {
     self.staticRangeHorizontalPadding = staticRangeHorizontalPadding
   }
 
-  private var selectedDateLabel: String {
-    ForecastDateLabel.compact(
-      for: (calendar.startOfDay(for: selection)),
-      calendar: calendar,
-      locale: locale
-    )
-  }
-
-  private var staticRangeLabel: String? {
-    guard case .staticRange(let start, let end) = display else {
-      return nil
-    }
-    return ForecastDateLabel.compactRange(
-      from: start,
-      through: end,
-      calendar: calendar,
-      locale: locale
-    )
-  }
-
   // MARK: - Body and Controls
 
   var body: some View {
@@ -167,10 +147,23 @@ struct TopForecastDateSwitcher: View {
         Button {
           showsDatePicker = true
         } label: {
-          dateLabel(
-            selectedDateLabel,
-            color: theme.colors.primaryText
+          (Text(
+            ((ForecastDateLabel.compact(
+              for: (calendar.startOfDay(for: selection)),
+              calendar: calendar,
+              locale: locale
+            )))
           )
+          // Match the Saved Places recommendation rows so the shared
+          // forecast control reads at the same hierarchy.
+          .font(.body.weight(.medium))
+          .foregroundStyle((theme.colors.primaryText))
+          .lineLimit(1)
+          // The wider label fits ordinary localized dates at the standard
+          // text style. Longer ranges shrink before truncating.
+          .minimumScaleFactor(0.65)
+          .allowsTightening(true)
+          .frame(minWidth: dateLabelWidth, minHeight: dateLabelHeight))
           .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -182,10 +175,49 @@ struct TopForecastDateSwitcher: View {
         )
         .contentShape(Rectangle())
         .popover(isPresented: $showsDatePicker) {
-          datePicker
-            // On iPhone retain the anchored calendar instead of
-            // adapting this short choice into a full-screen sheet.
-            .presentationCompactAdaptation(.popover)
+          Group {
+            if let firstDate = Array(
+              Set(availableDates.map(calendar.startOfDay(for:)))
+            ).sorted().first,
+              let lastDate = Array(
+                Set(availableDates.map(calendar.startOfDay(for:)))
+              ).sorted().last
+            {
+              DatePicker(
+                "Forecast Date",
+                selection: Binding(
+                  get: { calendar.startOfDay(for: selection) },
+                  set: { date in
+                    guard
+                      let nearestDate = Array(
+                        Set(availableDates.map(calendar.startOfDay(for:)))
+                      ).sorted().min(by: {
+                        abs($0.timeIntervalSince(date))
+                          < abs($1.timeIntervalSince(date))
+                      })
+                    else {
+                      return
+                    }
+                    selection = nearestDate
+                    showsDatePicker = false
+                  }
+                ),
+                in: firstDate...lastDate,
+                displayedComponents: .date
+              )
+              .datePickerStyle(.graphical)
+              .tint(theme.colors.dotSun)
+              .padding()
+              .frame(minWidth: 320)
+              .presentationCompactAdaptation(.popover)
+            } else {
+              ContentUnavailableView("No Forecast Dates", systemImage: "calendar")
+                .padding()
+            }
+          }
+          // On iPhone retain the anchored calendar instead of
+          // adapting this short choice into a full-screen sheet.
+          .presentationCompactAdaptation(.popover)
         }
 
         stepperButton(
@@ -199,10 +231,34 @@ struct TopForecastDateSwitcher: View {
         )
 
       case .staticRange:
-        dateLabel(
-          staticRangeLabel ?? selectedDateLabel,
-          color: theme.colors.secondaryText
+        (Text(
+          (({
+            guard case .staticRange(let start, let end) = display else {
+              return nil
+            }
+            return ForecastDateLabel.compactRange(
+              from: start,
+              through: end,
+              calendar: calendar,
+              locale: locale
+            )
+          })()
+            ?? (ForecastDateLabel.compact(
+              for: (calendar.startOfDay(for: selection)),
+              calendar: calendar,
+              locale: locale
+            )))
         )
+        // Match the Saved Places recommendation rows so the shared
+        // forecast control reads at the same hierarchy.
+        .font(.body.weight(.medium))
+        .foregroundStyle((theme.colors.secondaryText))
+        .lineLimit(1)
+        // The wider label fits ordinary localized dates at the standard
+        // text style. Longer ranges shrink before truncating.
+        .minimumScaleFactor(0.65)
+        .allowsTightening(true)
+        .frame(minWidth: dateLabelWidth, minHeight: dateLabelHeight))
         .padding(.horizontal, staticRangeHorizontalPadding)
         .frame(
           minWidth: dateLabelWidth,
@@ -220,20 +276,6 @@ struct TopForecastDateSwitcher: View {
         showsDatePicker = false
       }
     }
-  }
-
-  private func dateLabel(_ text: String, color: Color) -> some View {
-    Text(text)
-      // Match the Saved Places recommendation rows so the shared
-      // forecast control reads at the same hierarchy.
-      .font(.body.weight(.medium))
-      .foregroundStyle(color)
-      .lineLimit(1)
-      // The wider label fits ordinary localized dates at the standard
-      // text style. Longer ranges shrink before truncating.
-      .minimumScaleFactor(0.65)
-      .allowsTightening(true)
-      .frame(minWidth: dateLabelWidth, minHeight: dateLabelHeight)
   }
 
   private func stepperButton(
@@ -278,61 +320,6 @@ struct TopForecastDateSwitcher: View {
         .disabled(targetDate == nil)
 
       }
-  }
-
-  // MARK: - Calendar Picker
-
-  @ViewBuilder
-  private var datePicker: some View {
-    if let firstDate = (
-      // Date values may include different times. Normalize them to calendar
-      // days, de-duplicate, and sort before calculating neighbours.
-      Array(Set(availableDates.map(calendar.startOfDay(for:))).sorted())).first,
-      let lastDate = (
-        // Date values may include different times. Normalize them to calendar
-        // days, de-duplicate, and sort before calculating neighbours.
-        Array(Set(availableDates.map(calendar.startOfDay(for:))).sorted())).last
-    {
-      DatePicker(
-        "Forecast Date",
-        selection: Binding(
-          // The graphical picker works with any day in its range;
-          // the setter below snaps that choice to an actual forecast.
-          get: { (calendar.startOfDay(for: selection)) },
-          set: selectNearestAvailableDate
-        ),
-        in: firstDate...lastDate,
-        displayedComponents: .date
-      )
-      .datePickerStyle(.graphical)
-      // The native graphical calendar uses its tint for the selected-day
-      // circle. Keep that selection aligned with the app's sunny-hours
-      // color instead of inheriting the neutral global control tint.
-      .tint(theme.colors.dotSun)
-      .padding()
-      .frame(minWidth: 320)
-      .presentationCompactAdaptation(.popover)
-    } else {
-      ContentUnavailableView("No Forecast Dates", systemImage: "calendar")
-        .padding()
-    }
-  }
-
-  private func selectNearestAvailableDate(_ date: Date) {
-    // Forecasts can have missing days. Choose the closest available day
-    // rather than leaving the shared selection on an unrenderable one.
-    guard
-      let nearestDate = (
-        // Date values may include different times. Normalize them to calendar
-        // days, de-duplicate, and sort before calculating neighbours.
-        Array(Set(availableDates.map(calendar.startOfDay(for:))).sorted())).min(by: {
-          abs($0.timeIntervalSince(date)) < abs($1.timeIntervalSince(date))
-        })
-    else {
-      return
-    }
-    selection = nearestDate
-    showsDatePicker = false
   }
 
 }

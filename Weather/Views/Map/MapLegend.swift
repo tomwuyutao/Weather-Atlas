@@ -46,47 +46,87 @@ struct MapSunnyHoursLegend: View {
   @ViewBuilder
   private var expandedLegend: some View {
     if reduceTransparency {
-      legendCard
+      (verticalGradientLegend
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        // Let the close target hang beyond the trailing edge so its full
+        // hit area does not widen the compact gradient scale.
+        .padding(.trailing, 20)
+        .frame(width: 108, alignment: .leading)
+        .overlay(alignment: .topTrailing) {
+          Button("Hide Sunny Hours Legend", systemImage: "xmark") {
+            isExpanded = false
+          }
+          .labelStyle(.iconOnly)
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(theme.colors.secondaryText)
+          .frame(width: 44, height: 44)
+          .contentShape(Rectangle())
+          .buttonStyle(.plain)
+          .padding(-8)
+          .padding(.top, 4)
+          .padding(.trailing, 4)
+        }
+        .contentShape(shape)
+        .fixedSize(horizontal: true, vertical: false))
         .background(theme.colors.glassFill, in: shape)
         .overlay {
           shape.stroke(theme.colors.primaryText.opacity(0.9), lineWidth: 1)
         }
     } else if #available(iOS 26.0, *) {
-      legendCard
+      (verticalGradientLegend
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        // Let the close target hang beyond the trailing edge so its full
+        // hit area does not widen the compact gradient scale.
+        .padding(.trailing, 20)
+        .frame(width: 108, alignment: .leading)
+        .overlay(alignment: .topTrailing) {
+          Button("Hide Sunny Hours Legend", systemImage: "xmark") {
+            isExpanded = false
+          }
+          .labelStyle(.iconOnly)
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(theme.colors.secondaryText)
+          .frame(width: 44, height: 44)
+          .contentShape(Rectangle())
+          .buttonStyle(.plain)
+          .padding(-8)
+          .padding(.top, 4)
+          .padding(.trailing, 4)
+        }
+        .contentShape(shape)
+        .fixedSize(horizontal: true, vertical: false))
         .glassEffect(.regular.interactive(), in: shape)
     } else {
-      legendCard
+      (verticalGradientLegend
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        // Let the close target hang beyond the trailing edge so its full
+        // hit area does not widen the compact gradient scale.
+        .padding(.trailing, 20)
+        .frame(width: 108, alignment: .leading)
+        .overlay(alignment: .topTrailing) {
+          Button("Hide Sunny Hours Legend", systemImage: "xmark") {
+            isExpanded = false
+          }
+          .labelStyle(.iconOnly)
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(theme.colors.secondaryText)
+          .frame(width: 44, height: 44)
+          .contentShape(Rectangle())
+          .buttonStyle(.plain)
+          .padding(-8)
+          .padding(.top, 4)
+          .padding(.trailing, 4)
+        }
+        .contentShape(shape)
+        .fixedSize(horizontal: true, vertical: false))
         .background(theme.colors.glassFill, in: shape)
         .overlay {
           shape.stroke(theme.colors.primaryText.opacity(0.18), lineWidth: 0.6)
         }
     }
-  }
-
-  private var legendCard: some View {
-    verticalGradientLegend
-      .padding(.horizontal, 14)
-      .padding(.vertical, 12)
-      // Let the close target hang beyond the trailing edge so its full
-      // hit area does not widen the compact gradient scale.
-      .padding(.trailing, 20)
-      .frame(width: 108, alignment: .leading)
-      .overlay(alignment: .topTrailing) {
-        Button("Hide Sunny Hours Legend", systemImage: "xmark") {
-          isExpanded = false
-        }
-        .labelStyle(.iconOnly)
-        .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(theme.colors.secondaryText)
-        .frame(width: 44, height: 44)
-        .contentShape(Rectangle())
-        .buttonStyle(.plain)
-        .padding(-8)
-        .padding(.top, 4)
-        .padding(.trailing, 4)
-      }
-      .contentShape(shape)
-      .fixedSize(horizontal: true, vertical: false)
   }
 
   // MARK: - Scale
@@ -112,14 +152,22 @@ struct MapSunnyHoursLegend: View {
               ? String(
                 format: localizedString("%@ h+", locale: locale),
                 locale: locale,
-                SunnyHoursFormatting.hourCountText(
-                  Double(hours),
-                  locale: locale
+                Double(hours).formatted(
+                  .number
+                    .grouping(.never)
+                    .precision(.fractionLength(0))
+                    .locale(locale)
                 )
               )
-              : SunnyHoursFormatting.hourCountLabel(
-                Double(hours),
-                locale: locale
+              : String(
+                format: localizedString("%@ h", locale: locale),
+                locale: locale,
+                Double(hours).formatted(
+                  .number
+                    .grouping(.never)
+                    .precision(.fractionLength(0))
+                    .locale(locale)
+                )
               )
           )
           .font(.caption2.weight(.medium))

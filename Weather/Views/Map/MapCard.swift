@@ -379,7 +379,11 @@ private struct MapFindSunDisclosure: View {
         findSunNear(city)
       } label: {
         MapContextMenuLabel(
-          resolved: findNearTitle,
+          resolved: (String(
+            format: localizedString("Near %@", locale: locale),
+            locale: locale,
+            (CurrentLocationMetadata.localityName(from: displayName) ?? displayName)
+          )),
           systemImage: "location"
         )
       }
@@ -437,14 +441,6 @@ private struct MapFindSunDisclosure: View {
     }
     .menuStyle(.automatic)
     .buttonStyle(.plain)
-  }
-
-  private var findNearTitle: String {
-    String(
-      format: localizedString("Near %@", locale: locale),
-      locale: locale,
-      (CurrentLocationMetadata.localityName(from: displayName) ?? displayName)
-    )
   }
 
 }
@@ -657,7 +653,15 @@ struct MapRegionContextCard: View {
       // The direct-tap card is one of the two dedicated places that may
       // show the reverse-geocoded locality plus area. Its marker and
       // every ordinary place label still use `displayName`.
-      displayName: context.city.localizedTitleDisplayName(locale: locale),
+      displayName: {
+        let trimmedTitle =
+          context.city.titleName?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+          ) ?? ""
+        return trimmedTitle.isEmpty
+          ? context.city.localizedDisplayName(locale: locale)
+          : trimmedTitle
+      }(),
       weather: weather,
       country: context.country,
       continent: context.continent,
@@ -783,56 +787,6 @@ struct PlacesMapPlacePresentation: Identifiable {
       .environment(\.appTheme, .shared)
   }
 
-  /// Self-contained Find Sun fixture for the compact summary and native ranking
-  /// sheet, without loading MapKit or starting a weather request.
-  enum MapSunResultsPreviewData {
-    private static let cities: [(String, String, Double)] = [
-      ("Rome", "Italy", 12),
-      ("Naples", "Italy", 10),
-      ("Palermo", "Italy", 9),
-      ("Bari", "Italy", 8),
-      ("San Valentino in Abruzzo Citeriore", "Italy", 7),
-    ]
-
-    static var results: [MapSunSearchResult] {
-      cities.map { name, country, sunnyHours in
-        let city = City(
-          name: name,
-          country: country,
-          latitude: 41.9,
-          longitude: 12.5,
-          timeZoneIdentifier: "Europe/Rome"
-        )
-        let forecast = DailyForecast(
-          date: Date(timeIntervalSince1970: 1_786_233_600),
-          dailyLow: 18,
-          dailyHigh: 30,
-          symbolName: "sun.max.fill",
-          condition: AppWeatherCondition(rawValue: "clear"),
-          hourlyForecasts: [],
-          cloudCover: 0.1,
-          precipitationChance: 0,
-          uvIndex: 7,
-          sunrise: nil,
-          sunset: nil
-        )
-        let weather = CityWeather(
-          city: city,
-          dailyForecasts: [forecast],
-          timeZone: TimeZone(identifier: "Europe/Rome")!
-        )
-        return MapSunSearchResult(
-          recommendation: PlaceRecommendation(
-            cityWeather: weather,
-            symbolName: forecast.symbolName,
-            condition: forecast.condition,
-            sunnyHourCount: sunnyHours
-          )
-        )
-      }
-    }
-  }
-
   private struct MapSunResultsSummaryPreview: View {
     let title: String
 
@@ -861,7 +815,47 @@ struct PlacesMapPlacePresentation: Identifiable {
       .frame(width: 390, height: 180)
       .sheet(isPresented: $isRankingPresented) {
         FindSunListView(
-          results: MapSunResultsPreviewData.results,
+          results: [
+            ("Rome", "Italy", 12.0),
+            ("Naples", "Italy", 10.0),
+            ("Palermo", "Italy", 9.0),
+            ("Bari", "Italy", 8.0),
+            ("San Valentino in Abruzzo Citeriore", "Italy", 7.0),
+          ].map { name, country, sunnyHours in
+            let city = City(
+              name: name,
+              country: country,
+              latitude: 41.9,
+              longitude: 12.5,
+              timeZoneIdentifier: "Europe/Rome"
+            )
+            let forecast = DailyForecast(
+              date: Date(timeIntervalSince1970: 1_786_233_600),
+              dailyLow: 18,
+              dailyHigh: 30,
+              symbolName: "sun.max.fill",
+              condition: AppWeatherCondition(rawValue: "clear"),
+              hourlyForecasts: [],
+              cloudCover: 0.1,
+              precipitationChance: 0,
+              uvIndex: 7,
+              sunrise: nil,
+              sunset: nil
+            )
+            let weather = CityWeather(
+              city: city,
+              dailyForecasts: [forecast],
+              timeZone: TimeZone(identifier: "Europe/Rome")!
+            )
+            return MapSunSearchResult(
+              recommendation: PlaceRecommendation(
+                cityWeather: weather,
+                symbolName: forecast.symbolName,
+                condition: forecast.condition,
+                sunnyHourCount: sunnyHours
+              )
+            )
+          },
           title: title
         )
         .presentationDragIndicator(.visible)

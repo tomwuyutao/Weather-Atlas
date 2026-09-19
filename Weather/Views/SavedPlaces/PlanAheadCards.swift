@@ -41,8 +41,32 @@ struct ForecastComparisonSunnyOutlook: Identifiable, Equatable {
         return lhsDate < rhsDate
       }
 
-      let lhsPriority = sortPriority(for: lhs.element.status)
-      let rhsPriority = sortPriority(for: rhs.element.status)
+      let lhsPriority =
+        ({ (status: Status) in
+          switch status {
+          case .date:
+            0
+          case .loading:
+            1
+          case .unavailable:
+            2
+          case .noMatch:
+            3
+          }
+        })(lhs.element.status)
+      let rhsPriority =
+        ({ (status: Status) in
+          switch status {
+          case .date:
+            0
+          case .loading:
+            1
+          case .unavailable:
+            2
+          case .noMatch:
+            3
+          }
+        })(rhs.element.status)
       if lhsPriority != rhsPriority {
         return lhsPriority < rhsPriority
       }
@@ -52,18 +76,6 @@ struct ForecastComparisonSunnyOutlook: Identifiable, Equatable {
     .map(\.element)
   }
 
-  private static func sortPriority(for status: Status) -> Int {
-    switch status {
-    case .date:
-      0
-    case .loading:
-      1
-    case .unavailable:
-      2
-    case .noMatch:
-      3
-    }
-  }
 }
 
 // MARK: - Sunny Outlook List
@@ -108,7 +120,12 @@ struct SunnyOutlookByPlaceCard: View {
                   return true
                 }).last?.id
               {
-                rowDivider
+                (Divider()
+                  .background(theme.colors.secondaryText.opacity(0.16))
+                  .padding(
+                    .leading,
+                    SavedPlacesRankingListLayout.contentLeadingInset
+                  ))
               }
             }
           }
@@ -126,15 +143,6 @@ struct SunnyOutlookByPlaceCard: View {
     )
   }
 
-  private var rowDivider: some View {
-    Divider()
-      .background(theme.colors.secondaryText.opacity(0.16))
-      .padding(
-        .leading,
-        SavedPlacesRankingListLayout.contentLeadingInset
-      )
-  }
-
   private var statusContent: some View {
     HStack(spacing: 8) {
       if presentationState == .loading {
@@ -142,7 +150,19 @@ struct SunnyOutlookByPlaceCard: View {
           .controlSize(.small)
       }
 
-      Text(statusMessage)
+      Text(
+        ({
+          switch presentationState {
+          case .emptyLibrary:
+            statusMessages.empty
+          case .loading:
+            statusMessages.loading
+          case .unavailable:
+            statusMessages.unavailable
+          case .ready:
+            statusMessages.noPeriodForecasts
+          }
+        })())
     }
     .font(.callout)
     .foregroundStyle(theme.colors.secondaryText)
@@ -153,18 +173,6 @@ struct SunnyOutlookByPlaceCard: View {
     )
   }
 
-  private var statusMessage: LocalizedStringResource {
-    switch presentationState {
-    case .emptyLibrary:
-      statusMessages.empty
-    case .loading:
-      statusMessages.loading
-    case .unavailable:
-      statusMessages.unavailable
-    case .ready:
-      statusMessages.noPeriodForecasts
-    }
-  }
 }
 
 private struct SunnyOutlookPlaceRow: View {
@@ -176,11 +184,29 @@ private struct SunnyOutlookPlaceRow: View {
 
   var body: some View {
     HStack(spacing: SavedPlacesRankingListLayout.columnSpacing) {
-      leadingStatus
-        .frame(
-          width: SavedPlacesRankingListLayout.leadingIconWidth,
-          alignment: .leading
-        )
+      Group {
+        switch outlook.status {
+        case .date:
+          Image(systemName: "sun.max.fill")
+            .font(.callout.weight(.medium))
+            .foregroundStyle(theme.colors.dotSun)
+        case .noMatch:
+          Image(systemName: "minus")
+            .font(.callout.weight(.medium))
+            .foregroundStyle(theme.colors.secondaryText)
+        case .loading:
+          ProgressView()
+            .controlSize(.small)
+        case .unavailable:
+          Image(systemName: "exclamationmark.triangle")
+            .font(.callout.weight(.medium))
+            .foregroundStyle(theme.colors.secondaryText)
+        }
+      }
+      .frame(
+        width: SavedPlacesRankingListLayout.leadingIconWidth,
+        alignment: .leading
+      )
 
       Text(outlook.place.displayName)
         .font(.body)
@@ -197,69 +223,46 @@ private struct SunnyOutlookPlaceRow: View {
 
       Spacer(minLength: 8)
 
-      trailingStatus
-        .multilineTextAlignment(.trailing)
+      Group {
+        switch outlook.status {
+        case .date(let date):
+          Text(
+            ({ (date: Date) in
+              var style = Date.FormatStyle.dateTime
+                .weekday(.abbreviated)
+                .month(.abbreviated)
+                .day()
+                .locale(locale)
+              style.timeZone = calendar.timeZone
+              return date.formatted(style)
+            })(date)
+          )
+          .font(.body)
+          .foregroundStyle(theme.colors.primaryText)
+          .lineLimit(1)
+        case .noMatch:
+          Text("None in forecast")
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(2)
+        case .loading:
+          Text("Loading…")
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(1)
+        case .unavailable:
+          Text("Unavailable")
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(1)
+        }
+      }
+      .multilineTextAlignment(.trailing)
     }
     .padding(.vertical, 8)
     .contentShape(.rect)
   }
 
-  @ViewBuilder
-  private var leadingStatus: some View {
-    switch outlook.status {
-    case .date:
-      Image(systemName: "sun.max.fill")
-        .font(.callout.weight(.medium))
-        .foregroundStyle(theme.colors.dotSun)
-    case .noMatch:
-      Image(systemName: "minus")
-        .font(.callout.weight(.medium))
-        .foregroundStyle(theme.colors.secondaryText)
-    case .loading:
-      ProgressView()
-        .controlSize(.small)
-    case .unavailable:
-      Image(systemName: "exclamationmark.triangle")
-        .font(.callout.weight(.medium))
-        .foregroundStyle(theme.colors.secondaryText)
-    }
-  }
-
-  @ViewBuilder
-  private var trailingStatus: some View {
-    switch outlook.status {
-    case .date(let date):
-      Text(dateLabel(for: date))
-        .font(.body)
-        .foregroundStyle(theme.colors.primaryText)
-        .lineLimit(1)
-    case .noMatch:
-      Text("None in forecast")
-        .font(.callout)
-        .foregroundStyle(theme.colors.secondaryText)
-        .lineLimit(2)
-    case .loading:
-      Text("Loading…")
-        .font(.callout)
-        .foregroundStyle(theme.colors.secondaryText)
-        .lineLimit(1)
-    case .unavailable:
-      Text("Unavailable")
-        .font(.callout)
-        .foregroundStyle(theme.colors.secondaryText)
-        .lineLimit(1)
-    }
-  }
-
-  private func dateLabel(for date: Date) -> String {
-    var style = Date.FormatStyle.dateTime
-      .weekday(.abbreviated)
-      .month(.abbreviated)
-      .day()
-      .locale(locale)
-    style.timeZone = calendar.timeZone
-    return date.formatted(style)
-  }
 }
 
 // MARK: - Weekend Daily Ranking Model
@@ -379,7 +382,19 @@ struct BestWeekendEscapeCard: View {
           .controlSize(.small)
       }
 
-      Text(statusMessage)
+      Text(
+        ({
+          switch presentationState {
+          case .emptyLibrary:
+            statusMessages.empty
+          case .loading:
+            statusMessages.loading
+          case .unavailable:
+            statusMessages.unavailable
+          case .ready:
+            statusMessages.noPeriodForecasts
+          }
+        })())
     }
     .font(.callout)
     .foregroundStyle(theme.colors.secondaryText)
@@ -390,18 +405,6 @@ struct BestWeekendEscapeCard: View {
     )
   }
 
-  private var statusMessage: LocalizedStringResource {
-    switch presentationState {
-    case .emptyLibrary:
-      statusMessages.empty
-    case .loading:
-      statusMessages.loading
-    case .unavailable:
-      statusMessages.unavailable
-    case .ready:
-      statusMessages.noPeriodForecasts
-    }
-  }
 }
 
 private struct WeekendDayRankingColumn: View {
@@ -432,10 +435,19 @@ private struct WeekendDayRankingColumn: View {
         .lineLimit(1)
         .minimumScaleFactor(0.75)
 
-        Text(dateLabel)
-          .font(.caption)
-          .foregroundStyle(theme.colors.secondaryText)
-          .lineLimit(1)
+        Text(
+          ({
+            var style = Date.FormatStyle.dateTime
+              .month(.abbreviated)
+              .day()
+              .locale(locale)
+            style.timeZone = calendar.timeZone
+            return date.formatted(style)
+          })()
+        )
+        .font(.caption)
+        .foregroundStyle(theme.colors.secondaryText)
+        .lineLimit(1)
       }
       .padding(.bottom, 8)
 
@@ -469,14 +481,6 @@ private struct WeekendDayRankingColumn: View {
     }
   }
 
-  private var dateLabel: String {
-    var style = Date.FormatStyle.dateTime
-      .month(.abbreviated)
-      .day()
-      .locale(locale)
-    style.timeZone = calendar.timeZone
-    return date.formatted(style)
-  }
 }
 
 private struct WeekendDayRecommendationRow: View {
@@ -494,32 +498,39 @@ private struct WeekendDayRecommendationRow: View {
         .truncationMode(.tail)
         .frame(maxWidth: .infinity, alignment: .leading)
 
-      trailingStatus
+      Group {
+        if let recommendation = row.recommendation {
+          Text(
+            ({ () -> String in
+              let hours = recommendation.sunnyHourCount
+              return String(
+                format: localizedString("%@ h", locale: locale),
+                locale: locale,
+                hours.formatted(
+                  .number
+                    .grouping(.never)
+                    .precision(.fractionLength(hours.rounded() == hours ? 0 : 1))
+                    .locale(locale)
+                )
+              )
+            }())
+          )
+          .font(.body)
+          .monospacedDigit()
+          .foregroundStyle(theme.colors.secondaryText)
+          .lineLimit(1)
+          .fixedSize(horizontal: true, vertical: false)
+        } else if row.isLoading {
+          Text("Loading…")
+            .font(.caption)
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+        }
+      }
     }
     .padding(.vertical, 8)
     .contentShape(.rect)
   }
 
-  @ViewBuilder
-  private var trailingStatus: some View {
-    if let recommendation = row.recommendation {
-      Text(
-        SunnyHoursFormatting.hourCountLabel(
-          recommendation.sunnyHourCount,
-          locale: locale
-        )
-      )
-      .font(.body)
-      .monospacedDigit()
-      .foregroundStyle(theme.colors.secondaryText)
-      .lineLimit(1)
-      .fixedSize(horizontal: true, vertical: false)
-    } else if row.isLoading {
-      Text("Loading…")
-        .font(.caption)
-        .foregroundStyle(theme.colors.secondaryText)
-        .lineLimit(1)
-        .minimumScaleFactor(0.75)
-    }
-  }
 }

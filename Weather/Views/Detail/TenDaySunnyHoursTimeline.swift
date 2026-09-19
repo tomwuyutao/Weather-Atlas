@@ -91,36 +91,8 @@ struct TenDaySunnyHoursTimeline: View {
       }
   }
 
-  private var chartBounds: SunnyHoursChartBounds? {
-    // A merged domain makes the time axis identical across every row even
-    // if an individual forecast starts later or ends earlier.
-    let bounds = rows.map(\.bounds)
-    guard let first = bounds.map(\.startHour).min(),
-      let last = bounds.map(\.endHour).max()
-    else {
-      return nil
-    }
-    return SunnyHoursChartBounds(startHour: first, endHour: last)
-  }
-
   /// Uses a quiet neutral tinted toward the selected report condition so
   /// inactive segments belong to the same colorful Detail canvas.
-  private var noSunTimelineColor: Color {
-    let displayedCondition =
-      (city?.forecastIfAvailable(
-        on: selectedDate,
-        selectionCalendar: calendar
-      )).flatMap {
-        city?.displayedCondition(for: $0)
-      }
-    guard let tone = displayedCondition?.condition?.iconTone else {
-      return theme.colors.settingsRowFill
-    }
-    return theme.colors.weatherIconColor(
-      for: tone,
-      symbolName: displayedCondition?.symbolName
-    ).interpolated(with: theme.colors.background, by: 0.86)
-  }
 
   // MARK: - Presentation
 
@@ -131,7 +103,19 @@ struct TenDaySunnyHoursTimeline: View {
         title: "10-Day Sunny Hours"
       )
 
-      if let chartBounds {
+      if let chartBounds =
+        ({ () -> SunnyHoursChartBounds? in
+          // A merged domain makes the time axis identical across every row even
+          // if an individual forecast starts later or ends earlier.
+          let bounds = rows.map(\.bounds)
+          guard let first = bounds.map(\.startHour).min(),
+            let last = bounds.map(\.endHour).max()
+          else {
+            return nil
+          }
+          return SunnyHoursChartBounds(startHour: first, endHour: last)
+        })()
+      {
         SunnyHoursAxis(bounds: chartBounds)
 
         VStack(spacing: 0) {
@@ -155,7 +139,22 @@ struct TenDaySunnyHoursTimeline: View {
                 selected: isSelected,
                 label: dayLabel(for: row.forecastDate),
                 theme: theme.colors,
-                noSunColor: noSunTimelineColor
+                noSunColor: ({
+                  let displayedCondition =
+                    (city?.forecastIfAvailable(
+                      on: selectedDate,
+                      selectionCalendar: calendar
+                    )).flatMap {
+                      city?.displayedCondition(for: $0)
+                    }
+                  guard let tone = displayedCondition?.condition?.iconTone else {
+                    return theme.colors.settingsRowFill
+                  }
+                  return theme.colors.weatherIconColor(
+                    for: tone,
+                    symbolName: displayedCondition?.symbolName
+                  ).interpolated(with: theme.colors.background, by: 0.86)
+                })()
               )
             }
             .buttonStyle(.plain)
@@ -221,10 +220,23 @@ struct TenDaySunnyHoursTimeline: View {
 
     } else {
       VStack(spacing: 12) {
-        Text(resolvedUnavailableMessage)
-          .font(.callout)
-          .foregroundStyle(theme.colors.secondaryText)
-          .multilineTextAlignment(.center)
+        Text(
+          ({
+            let message = unavailableMessage?.trimmingCharacters(
+              in: .whitespacesAndNewlines
+            )
+            guard let message, !message.isEmpty else {
+              return localizedString(
+                "10-day sunny hours are unavailable.",
+                locale: locale
+              )
+            }
+            return message
+          })()
+        )
+        .font(.callout)
+        .foregroundStyle(theme.colors.secondaryText)
+        .multilineTextAlignment(.center)
 
         if let retry {
           Button("Try Again", systemImage: "arrow.clockwise") {
@@ -241,19 +253,6 @@ struct TenDaySunnyHoursTimeline: View {
     }
   }
 
-  private var resolvedUnavailableMessage: String {
-    let message = unavailableMessage?.trimmingCharacters(
-      in: .whitespacesAndNewlines
-    )
-    guard let message, !message.isEmpty else {
-      return localizedString(
-        "10-day sunny hours are unavailable.",
-        locale: locale
-      )
-    }
-    return message
-  }
-
   // MARK: - Legend
 
   private var legend: some View {
@@ -268,7 +267,22 @@ struct TenDaySunnyHoursTimeline: View {
         )
         legendItem(
           "No Sun",
-          color: noSunTimelineColor
+          color: ({
+            let displayedCondition =
+              (city?.forecastIfAvailable(
+                on: selectedDate,
+                selectionCalendar: calendar
+              )).flatMap {
+                city?.displayedCondition(for: $0)
+              }
+            guard let tone = displayedCondition?.condition?.iconTone else {
+              return theme.colors.settingsRowFill
+            }
+            return theme.colors.weatherIconColor(
+              for: tone,
+              symbolName: displayedCondition?.symbolName
+            ).interpolated(with: theme.colors.background, by: 0.86)
+          })()
         )
         legendItem("Rain", color: theme.colors.dotRain)
         legendItem("Drizzle", color: theme.colors.dotDrizzle)
@@ -283,7 +297,22 @@ struct TenDaySunnyHoursTimeline: View {
           )
           legendItem(
             "No Sun",
-            color: noSunTimelineColor
+            color: ({
+              let displayedCondition =
+                (city?.forecastIfAvailable(
+                  on: selectedDate,
+                  selectionCalendar: calendar
+                )).flatMap {
+                  city?.displayedCondition(for: $0)
+                }
+              guard let tone = displayedCondition?.condition?.iconTone else {
+                return theme.colors.settingsRowFill
+              }
+              return theme.colors.weatherIconColor(
+                for: tone,
+                symbolName: displayedCondition?.symbolName
+              ).interpolated(with: theme.colors.background, by: 0.86)
+            })()
           )
         }
         HStack(spacing: 14) {

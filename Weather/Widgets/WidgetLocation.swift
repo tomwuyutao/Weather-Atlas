@@ -104,21 +104,7 @@ final class WidgetCurrentLocationMetadataResolver {
   private var timeoutTask: Task<Void, Never>?
   private var cancelMapKitRequest: (() -> Void)?
 
-  static func resolve(
-    _ location: CLLocation,
-    locale: Locale,
-    timeout: Duration
-  ) async -> WidgetCurrentLocationMetadata? {
-    guard timeout > .zero else { return nil }
-    let resolver = WidgetCurrentLocationMetadataResolver()
-    return await resolver.resolve(
-      location,
-      locale: locale,
-      timeout: timeout
-    )
-  }
-
-  private func resolve(
+  func resolve(
     _ location: CLLocation,
     locale: Locale,
     timeout: Duration
@@ -290,6 +276,8 @@ actor WidgetCurrentLocationRequestCoordinator {
     WidgetCurrentLocationContext
   >(completedReuseInterval: .seconds(30))
 
+  /// Actor-isolated coalescing boundary for concurrent WidgetKit requests.
+  /// The retained coordinator state cannot be inlined into outside callers.
   func currentContext(
     locationTimeout: Duration,
     metadataTimeout: Duration,
@@ -351,11 +339,16 @@ final class WidgetCurrentLocationResolver: NSObject, CLLocationManagerDelegate {
       timeout: locationTimeout
     )
     try Task.checkCancellation()
-    let metadata = await WidgetCurrentLocationMetadataResolver.resolve(
-      location,
-      locale: locale,
-      timeout: metadataTimeout
-    )
+    let metadata: WidgetCurrentLocationMetadata?
+    if metadataTimeout > .zero {
+      metadata = await WidgetCurrentLocationMetadataResolver().resolve(
+        location,
+        locale: locale,
+        timeout: metadataTimeout
+      )
+    } else {
+      metadata = nil
+    }
     try Task.checkCancellation()
     return WidgetCurrentLocationContext(
       latitude: location.coordinate.latitude,
@@ -647,15 +640,28 @@ extension SunnyHoursLockScreenProvider {
       let catalog = WidgetDataStore.catalog(),
       catalog.resolvedDefaultLocationKind == .currentLocation,
       let generation = catalog.currentLocationGeneration,
-      let snapshot = WidgetForecastStore.fallbackSnapshot(
+      let snapshot = WidgetForecastStore.firstMatchingSnapshot(
         forAny: [WidgetDataStore.currentLocationIdentifier],
+        now: .now,
+        maximumAge: nil,
         matching: {
           $0.locationSource == .deviceCurrentLocation
             && $0.currentLocationGeneration == generation
-            && validCoordinate(
-              latitude: $0.latitude,
-              longitude: $0.longitude
-            )
+            && ({ (latitude: Double?, longitude: Double?) in
+              guard let latitude,
+                let longitude,
+                latitude.isFinite,
+                longitude.isFinite
+              else {
+                return false
+              }
+              return CLLocationCoordinate2DIsValid(
+                CLLocationCoordinate2D(
+                  latitude: latitude,
+                  longitude: longitude
+                )
+              )
+            })($0.latitude, $0.longitude)
         }
       ),
       let latitude = snapshot.latitude,
@@ -705,22 +711,4 @@ extension SunnyHoursLockScreenProvider {
     return WidgetAppliedSnapshot(city: cachedCity, snapshot: snapshot)
   }
 
-  private func validCoordinate(
-    latitude: Double?,
-    longitude: Double?
-  ) -> Bool {
-    guard let latitude,
-      let longitude,
-      latitude.isFinite,
-      longitude.isFinite
-    else {
-      return false
-    }
-    return CLLocationCoordinate2DIsValid(
-      CLLocationCoordinate2D(
-        latitude: latitude,
-        longitude: longitude
-      )
-    )
-  }
 }

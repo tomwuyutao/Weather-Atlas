@@ -134,7 +134,19 @@ struct BestSunnyPlacesCard: View {
           .controlSize(.small)
       }
 
-      Text(statusMessage)
+      Text(
+        ({
+          switch presentationState {
+          case .emptyLibrary:
+            statusMessages.empty
+          case .loading:
+            statusMessages.loading
+          case .unavailable:
+            statusMessages.unavailable
+          case .ready:
+            statusMessages.noDateComparison
+          }
+        })())
     }
     .font(.callout)
     .foregroundStyle(theme.colors.secondaryText)
@@ -145,18 +157,6 @@ struct BestSunnyPlacesCard: View {
     )
   }
 
-  private var statusMessage: LocalizedStringResource {
-    switch presentationState {
-    case .emptyLibrary:
-      statusMessages.empty
-    case .loading:
-      statusMessages.loading
-    case .unavailable:
-      statusMessages.unavailable
-    case .ready:
-      statusMessages.noDateComparison
-    }
-  }
 }
 
 // MARK: - Shared Row Alignment
@@ -183,35 +183,32 @@ private struct ForecastComparisonDayRow: View {
           displayName: row.place.displayName
         )
       } else {
-        loadingRow
+        (HStack(spacing: SavedPlacesRankingListLayout.columnSpacing) {
+          ProgressView()
+            .controlSize(.small)
+            .frame(
+              width: SavedPlacesRankingListLayout.leadingIconWidth,
+              alignment: .leading
+            )
+
+          Text(row.place.displayName)
+            .font(.body)
+            .foregroundStyle(theme.colors.primaryText)
+            .lineLimit(2)
+
+          Spacer(minLength: 8)
+
+          Text("Loading…")
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(1)
+        }
+        .padding(.vertical, 8)
+        .contentShape(.rect))
       }
     }
   }
 
-  private var loadingRow: some View {
-    HStack(spacing: SavedPlacesRankingListLayout.columnSpacing) {
-      ProgressView()
-        .controlSize(.small)
-        .frame(
-          width: SavedPlacesRankingListLayout.leadingIconWidth,
-          alignment: .leading
-        )
-
-      Text(row.place.displayName)
-        .font(.body)
-        .foregroundStyle(theme.colors.primaryText)
-        .lineLimit(2)
-
-      Spacer(minLength: 8)
-
-      Text("Loading…")
-        .font(.callout)
-        .foregroundStyle(theme.colors.secondaryText)
-        .lineLimit(1)
-    }
-    .padding(.vertical, 8)
-    .contentShape(.rect)
-  }
 }
 
 /// The row grid deliberately shares the header's icon width and spacing, so
@@ -295,9 +292,16 @@ struct SunnyPlaceRecommendationRow: View {
   }
 
   private var trailingLabel: String {
-    let hourLabel = SunnyHoursFormatting.hourCountLabel(
-      recommendation.sunnyHourCount,
-      locale: locale
+    let hours = recommendation.sunnyHourCount
+    let hourLabel = String(
+      format: localizedString("%@ h", locale: locale),
+      locale: locale,
+      hours.formatted(
+        .number
+          .grouping(.never)
+          .precision(.fractionLength(hours.rounded() == hours ? 0 : 1))
+          .locale(locale)
+      )
     )
     guard let trailingContext else { return hourLabel }
 

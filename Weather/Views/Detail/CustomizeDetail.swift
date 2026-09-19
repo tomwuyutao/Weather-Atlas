@@ -51,10 +51,32 @@ struct CustomizeDetail: View {
 
       Section {
         ForEach((DetailReportSection.order(from: storedOrder))) { section in
-          Label(section.title, systemImage: section.systemImage)
-            .foregroundStyle(theme.colors.primaryText)
+          Label(
+            {
+              switch section {
+              case .tenDaySunnyHours: "10-Day Sunny Hours"
+              case .basicWeatherData: "Basic Weather Data"
+              case .nearbySunnyPlaces: "Nearby Sunnier Places"
+              }
+            }(),
+            systemImage: {
+              switch section {
+              case .tenDaySunnyHours: "calendar"
+              case .basicWeatherData: "square.grid.2x2"
+              case .nearbySunnyPlaces: "location.magnifyingglass"
+              }
+            }()
+          )
+          .foregroundStyle(theme.colors.primaryText)
         }
-        .onMove(perform: moveSections)
+        .onMove { source, destination in
+          var reorderedSections = DetailReportSection.order(from: storedOrder)
+          reorderedSections.move(
+            fromOffsets: source,
+            toOffset: destination
+          )
+          storedOrder = reorderedSections.map(\.rawValue).joined(separator: ",")
+        }
       }
       .listRowBackground(theme.colors.settingsRowFill)
     }
@@ -63,17 +85,6 @@ struct CustomizeDetail: View {
     .weatherScrollableBackground()
   }
 
-  private func moveSections(
-    from source: IndexSet,
-    to destination: Int
-  ) {
-    var reorderedSections = (DetailReportSection.order(from: storedOrder))
-    reorderedSections.move(
-      fromOffsets: source,
-      toOffset: destination
-    )
-    storedOrder = reorderedSections.map(\.rawValue).joined(separator: ",")
-  }
 }
 
 #if DEBUG

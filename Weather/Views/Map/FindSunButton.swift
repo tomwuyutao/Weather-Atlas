@@ -74,12 +74,28 @@ struct FindSunButton: View {
     if UIDevice.current.userInterfaceIdiom == .pad {
       findSunMenu
         .sheet(item: $presentedPicker) { picker in
-          geographicPicker(for: picker)
+          (FindSunGeographicSearchSheet(
+            picker: (picker),
+            currentLocationCoordinate: currentLocationCoordinate,
+            locale: locale,
+            sessionGeneration: sessionGeneration,
+            isSessionCurrent: { $0 == latestSessionGeneration },
+            findSunInCountry: findSunInCountry,
+            findSunInContinent: findSunInContinent
+          ))
         }
     } else {
       findSunMenu
         .fullScreenCover(item: $presentedPicker) { picker in
-          geographicPicker(for: picker)
+          (FindSunGeographicSearchSheet(
+            picker: (picker),
+            currentLocationCoordinate: currentLocationCoordinate,
+            locale: locale,
+            sessionGeneration: sessionGeneration,
+            isSessionCurrent: { $0 == latestSessionGeneration },
+            findSunInCountry: findSunInCountry,
+            findSunInContinent: findSunInContinent
+          ))
         }
     }
   }
@@ -143,20 +159,6 @@ struct FindSunButton: View {
         .frame(minHeight: 44)
         .contentShape(Rectangle())
     }
-  }
-
-  private func geographicPicker(
-    for picker: GeographicPicker
-  ) -> FindSunGeographicSearchSheet {
-    FindSunGeographicSearchSheet(
-      picker: picker,
-      currentLocationCoordinate: currentLocationCoordinate,
-      locale: locale,
-      sessionGeneration: sessionGeneration,
-      isSessionCurrent: { $0 == latestSessionGeneration },
-      findSunInCountry: findSunInCountry,
-      findSunInContinent: findSunInContinent
-    )
   }
 
   // MARK: - Deferred Menu Actions
@@ -268,20 +270,6 @@ private struct FindSunGeographicSearchSheet: View {
   @Environment(\.appTheme) private var theme
   @Environment(\.dismiss) private var dismiss
 
-  private var countries: [CountryPlacesOption] {
-    let allCountries = CountryCityCatalog.countries(
-      near: currentLocationCoordinate,
-      locale: locale
-    )
-    guard !(query.trimmingCharacters(in: .whitespacesAndNewlines)).isEmpty else {
-      return allCountries
-    }
-    return allCountries.filter { country in
-      country.matchesSearchQuery(
-        (query.trimmingCharacters(in: .whitespacesAndNewlines)), locale: locale)
-    }
-  }
-
   var body: some View {
     NavigationStack {
       geographicSearchContent
@@ -308,6 +296,19 @@ private struct FindSunGeographicSearchSheet: View {
 
   @ViewBuilder
   private var geographicSearchContent: some View {
+    let allCountries = CountryCityCatalog.countries(
+      near: currentLocationCoordinate,
+      locale: locale
+    )
+    let countries =
+      (query.trimmingCharacters(in: .whitespacesAndNewlines)).isEmpty
+      ? allCountries
+      : allCountries.filter { country in
+        country.matchesSearchQuery(
+          query.trimmingCharacters(in: .whitespacesAndNewlines),
+          locale: locale
+        )
+      }
     if picker == .country && !(query.trimmingCharacters(in: .whitespacesAndNewlines)).isEmpty
       && countries.isEmpty
     {
@@ -322,9 +323,17 @@ private struct FindSunGeographicSearchSheet: View {
             Button {
               select(country)
             } label: {
-              geographicPickerRow(
-                title: country.localizedName(locale: locale)
-              )
+              (HStack {
+                Text((country.localizedName(locale: locale)))
+                  .font(.body)
+                  .foregroundStyle(theme.colors.primaryText)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                  .font(.subheadline.weight(.medium))
+                  .foregroundStyle(theme.colors.secondaryText.opacity(0.7))
+              }
+              .contentShape(.rect))
             }
             .buttonStyle(.plain)
           }
@@ -334,9 +343,17 @@ private struct FindSunGeographicSearchSheet: View {
             Button {
               select(continent)
             } label: {
-              geographicPickerRow(
-                title: continent.localizedName(locale: locale)
-              )
+              (HStack {
+                Text((continent.localizedName(locale: locale)))
+                  .font(.body)
+                  .foregroundStyle(theme.colors.primaryText)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                  .font(.subheadline.weight(.medium))
+                  .foregroundStyle(theme.colors.secondaryText.opacity(0.7))
+              }
+              .contentShape(.rect))
             }
             .buttonStyle(.plain)
           }
@@ -352,19 +369,6 @@ private struct FindSunGeographicSearchSheet: View {
 
   /// Broad geographic rows open the same result surface as their Search-tab
   /// counterparts, so they retain the standard trailing disclosure affordance.
-  private func geographicPickerRow(title: String) -> some View {
-    HStack {
-      Text(title)
-        .font(.body)
-        .foregroundStyle(theme.colors.primaryText)
-        .frame(maxWidth: .infinity, alignment: .leading)
-
-      Image(systemName: "chevron.right")
-        .font(.subheadline.weight(.medium))
-        .foregroundStyle(theme.colors.secondaryText.opacity(0.7))
-    }
-    .contentShape(.rect)
-  }
 
   /// Begin native dismissal synchronously, then start the Map query on the
   /// following main-actor turn. The selector therefore leaves immediately,

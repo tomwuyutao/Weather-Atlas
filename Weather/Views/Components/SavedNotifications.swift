@@ -58,13 +58,28 @@ struct SavedNotifications: View {
       .symbolRenderingMode(.monochrome)
       .foregroundStyle(theme.colors.primaryText)
 
-      Text(message)
-        .font(.body)
-        .foregroundStyle(theme.colors.primaryText)
-        .multilineTextAlignment(.center)
-        .lineLimit(2, reservesSpace: true)
-        .minimumScaleFactor(0.62)
-        .fixedSize(horizontal: false, vertical: true)
+      Text(
+        ({
+          switch notification.change {
+          case .saved:
+            localizedString(
+              "Added \(notification.placeName)\nto Saved Places",
+              locale: locale
+            )
+          case .removed:
+            localizedString(
+              "Removed \(notification.placeName)\nfrom Saved Places",
+              locale: locale
+            )
+          }
+        })()
+      )
+      .font(.body)
+      .foregroundStyle(theme.colors.primaryText)
+      .multilineTextAlignment(.center)
+      .lineLimit(2, reservesSpace: true)
+      .minimumScaleFactor(0.62)
+      .fixedSize(horizontal: false, vertical: true)
     }
     .padding(Layout.padding)
     // A fixed 4:3 footprint keeps the popup visually consistent everywhere
@@ -94,20 +109,6 @@ struct SavedNotifications: View {
 
   // MARK: - Localized Content
 
-  private var message: String {
-    switch notification.change {
-    case .saved:
-      localizedString(
-        "Added \(notification.placeName)\nto Saved Places",
-        locale: locale
-      )
-    case .removed:
-      localizedString(
-        "Removed \(notification.placeName)\nfrom Saved Places",
-        locale: locale
-      )
-    }
-  }
 }
 
 #if DEBUG

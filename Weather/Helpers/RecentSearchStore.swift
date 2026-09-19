@@ -40,7 +40,19 @@ final class RecentSearchStore {
   /// Restores the live app history from its small UserDefaults document.
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
-    let document = Self.load(from: defaults)
+    let document =
+      ({ (defaults: UserDefaults) -> Document in
+        guard let data = defaults.data(forKey: Self.storageKey),
+          let document = try? JSONDecoder().decode(
+            Document.self,
+            from: data
+          ),
+          document.schemaVersion == Self.schemaVersion
+        else {
+          return .empty
+        }
+        return document
+      })(defaults)
     cities = document.cities
     countryISO2Codes = document.countryISO2Codes
     continents = document.continentRawValues.compactMap(
@@ -114,19 +126,6 @@ final class RecentSearchStore {
       return
     }
     defaults.set(data, forKey: Self.storageKey)
-  }
-
-  private static func load(from defaults: UserDefaults) -> Document {
-    guard let data = defaults.data(forKey: storageKey),
-      let document = try? JSONDecoder().decode(
-        Document.self,
-        from: data
-      ),
-      document.schemaVersion == schemaVersion
-    else {
-      return .empty
-    }
-    return document
   }
 
   private struct Document: Codable {

@@ -254,7 +254,7 @@ final class MissingDataAlertCenter {
 
 // MARK: - SwiftUI Missing-Data Recovery
 
-private struct MissingDataAlertReportingModifier: ViewModifier {
+struct MissingDataAlertReportingModifier: ViewModifier {
   let report: MissingDataAlertReport?
   let recoveryKey: String?
   let retry: MissingDataRetry?
@@ -308,40 +308,6 @@ private struct MissingDataAlertReportingModifier: ViewModifier {
         // stale task from presenting after replacement or dismissal.
         !Task.isCancelled && reportedKey == currentReport.key
       }
-    )
-  }
-}
-
-extension View {
-  /// Draws the blank state first, then queues a native alert. Prefer the
-  /// `retrying:` overload for weather or place data so one immediate
-  /// re-fetch happens before any alert can appear.
-  func reportingMissingData(_ report: MissingDataAlertReport?) -> some View {
-    modifier(
-      MissingDataAlertReportingModifier(
-        report: report,
-        recoveryKey: nil,
-        retry: nil
-      )
-    )
-  }
-
-  /// Draws the blank state, runs one immediate async re-fetch, and shows an
-  /// alert only if the same report remains active afterwards. Use the same
-  /// `recoveryKey` for cards backed by the same refreshable source; they
-  /// wait for one shared retry. The closure belongs to this modifier rather
-  /// than the app environment.
-  func reportingMissingData(
-    _ report: MissingDataAlertReport?,
-    recoveryKey: String,
-    retrying retry: @escaping MissingDataRetry
-  ) -> some View {
-    modifier(
-      MissingDataAlertReportingModifier(
-        report: report,
-        recoveryKey: recoveryKey,
-        retry: retry
-      )
     )
   }
 }

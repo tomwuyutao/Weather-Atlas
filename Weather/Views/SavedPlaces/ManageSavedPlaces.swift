@@ -63,7 +63,15 @@ struct ManageSavedPlaces: View {
         isPresented: $deleteAllIsPresented
       ) {
         Button("Delete All", role: .destructive) {
-          deleteAllPlaces()
+          do {
+            try placesStore.persist(.empty)
+            placesStore.pendingSavedPlaceNotifications.removeAll()
+            editMode = .inactive
+          } catch {
+            presentedError = PlacesUIError(
+              message: localizedPlacesErrorDescription(error, locale: locale)
+            )
+          }
         }
         Button("Cancel", role: .cancel) {}
       } message: {
@@ -71,7 +79,14 @@ struct ManageSavedPlaces: View {
       }
       .alert(
         "Unable to Update Places",
-        isPresented: errorIsPresented,
+        isPresented: (Binding(
+          get: { presentedError != nil },
+          set: { isPresented in
+            if !isPresented {
+              presentedError = nil
+            }
+          }
+        )),
         presenting: presentedError
       ) { _ in
         Button("OK") {
@@ -82,7 +97,15 @@ struct ManageSavedPlaces: View {
       }
       .alert(
         "Rename Saved Place",
-        isPresented: renameIsPresented,
+        isPresented: (Binding(
+          get: { renamingPlace != nil },
+          set: { isPresented in
+            if !isPresented {
+              renamingPlace = nil
+              renameDraft = ""
+            }
+          }
+        )),
         presenting: renamingPlace
       ) { _ in
         TextField("Name", text: $renameDraft)
@@ -191,44 +214,20 @@ struct ManageSavedPlaces: View {
 
   // MARK: - User Actions and Bindings
 
-  private var errorIsPresented: Binding<Bool> {
-    Binding(
-      get: { presentedError != nil },
-      set: { isPresented in
-        if !isPresented {
-          presentedError = nil
-        }
-      }
-    )
-  }
-
-  private var renameIsPresented: Binding<Bool> {
-    Binding(
-      get: { renamingPlace != nil },
-      set: { isPresented in
-        if !isPresented {
-          renamingPlace = nil
-          renameDraft = ""
-        }
-      }
-    )
-  }
-
-  private var renameDraftIsValid: Bool {
-    guard
-      let proposedCustomName = SavedPlace.normalizedCustomName(
-        renameDraft
-      )
-    else { return true }
-    return PlacesLibraryValidator.isValidUserFacingName(
-      proposedCustomName,
-      maximumLength: PlacesLibraryValidator.maximumPlaceNameLength
-    )
-  }
-
   private var canSaveRename: Bool {
     guard let renamingPlace else { return false }
-    return renameDraftIsValid
+    return
+      ({
+        guard
+          let proposedCustomName = SavedPlace.normalizedCustomName(
+            renameDraft
+          )
+        else { return true }
+        return PlacesLibraryValidator.isValidUserFacingName(
+          proposedCustomName,
+          maximumLength: PlacesLibraryValidator.maximumPlaceNameLength
+        )
+      })()
       && SavedPlace.normalizedCustomName(renameDraft)
         != SavedPlace.normalizedCustomName(
           renamingPlace.customName
@@ -253,18 +252,6 @@ struct ManageSavedPlaces: View {
     }
   }
 
-  private func deleteAllPlaces() {
-    do {
-      try placesStore.persist(.empty)
-      placesStore.pendingSavedPlaceNotifications.removeAll()
-      editMode = .inactive
-    } catch {
-      presentedError = PlacesUIError(
-        message: localizedPlacesErrorDescription(error, locale: locale)
-      )
-    }
-  }
-
   private func requestDeletion(_ offsets: IndexSet) {
     let placeIDs = offsets.compactMap { offset in
       savedPlaces.indices.contains(offset) ? savedPlaces[offset].id : nil
@@ -283,19 +270,6 @@ struct ManageSavedPlaces: View {
     }
   }
 
-  private func deletePlace(_ place: SavedPlace) {
-    do {
-      try placesStore.deletePlace(id: place.id)
-    } catch {
-      presentedError = PlacesUIError(
-        message: localizedPlacesErrorDescription(error, locale: locale)
-      )
-    }
-    if savedPlaces.isEmpty {
-      editMode = .inactive
-    }
-  }
-
   @ViewBuilder
   private func placeContextMenu(_ place: SavedPlace) -> some View {
     Button("Rename", systemImage: "pencil") {
@@ -304,7 +278,16 @@ struct ManageSavedPlaces: View {
     }
 
     Button(role: .destructive) {
-      deletePlace(place)
+      do {
+        try placesStore.deletePlace(id: place.id)
+      } catch {
+        presentedError = PlacesUIError(
+          message: localizedPlacesErrorDescription(error, locale: locale)
+        )
+      }
+      if savedPlaces.isEmpty {
+        editMode = .inactive
+      }
     } label: {
       Label("Delete", systemImage: "trash")
         .foregroundStyle(theme.colors.destructive)

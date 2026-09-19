@@ -50,7 +50,34 @@ nonisolated struct CachedCityWeather: Codable, Sendable {
   @MainActor
   func toCityWeather() -> CityWeather? {
     guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
-    let forecasts = dailyForecasts.map { $0.toDailyForecast() }
+    let forecasts = dailyForecasts.map { daily in
+      DailyForecast(
+        date: daily.date,
+        dailyLow: daily.dailyLow,
+        dailyHigh: daily.dailyHigh,
+        symbolName: daily.symbolName,
+        condition: daily.condition,
+        hourlyForecasts: daily.hourlyForecasts.map { hourly in
+          HourlyForecast(
+            date: hourly.date,
+            symbolName: hourly.symbolName,
+            condition: hourly.condition,
+            isDaylight: hourly.isDaylight,
+            temperature: hourly.temperature,
+            apparentTemperature: hourly.apparentTemperature,
+            cloudCover: hourly.cloudCover,
+            precipitationChance: hourly.precipitationChance,
+            uvIndex: hourly.uvIndex,
+            visibilityKilometers: hourly.visibilityKilometers
+          )
+        },
+        cloudCover: daily.cloudCover,
+        precipitationChance: daily.precipitationChance,
+        uvIndex: daily.uvIndex,
+        sunrise: daily.sunrise,
+        sunset: daily.sunset
+      )
+    }
     guard !forecasts.isEmpty else { return nil }
 
     return CityWeather(
@@ -129,25 +156,6 @@ nonisolated struct CachedDailyForecast: Codable, Sendable {
     sunset = forecast.sunset
   }
 
-  /// Restores one daily forecast without dropping hours that contain nil
-  /// optional metrics.
-  @MainActor
-  func toDailyForecast() -> DailyForecast {
-    let restoredHours = hourlyForecasts.map { $0.toHourlyForecast() }
-    return DailyForecast(
-      date: date,
-      dailyLow: dailyLow,
-      dailyHigh: dailyHigh,
-      symbolName: symbolName,
-      condition: condition,
-      hourlyForecasts: restoredHours,
-      cloudCover: cloudCover,
-      precipitationChance: precipitationChance,
-      uvIndex: uvIndex,
-      sunrise: sunrise,
-      sunset: sunset
-    )
-  }
 }
 
 // MARK: - Hourly Snapshot
@@ -191,23 +199,4 @@ nonisolated struct CachedHourlyForecast: Codable, Sendable {
     visibilityKilometers = forecast.visibilityKilometers
   }
 
-  /// Restores one hourly forecast while preserving every optional metric.
-  /// Missing UV, visibility, or temperature data must blank only that field;
-  /// dropping the whole hour/day/city would hide the actual failure and discard
-  /// unrelated valid source data.
-  @MainActor
-  func toHourlyForecast() -> HourlyForecast {
-    HourlyForecast(
-      date: date,
-      symbolName: symbolName,
-      condition: condition,
-      isDaylight: isDaylight,
-      temperature: temperature,
-      apparentTemperature: apparentTemperature,
-      cloudCover: cloudCover,
-      precipitationChance: precipitationChance,
-      uvIndex: uvIndex,
-      visibilityKilometers: visibilityKilometers
-    )
-  }
 }
