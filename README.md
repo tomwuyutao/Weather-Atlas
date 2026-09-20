@@ -13,29 +13,22 @@
 
 Weather Atlas is a native iPhone and iPad app for planning around sunny weather. Instead of opening forecasts city by city, you can save the places you care about and compare their daytime sunny hours for a date, a weekend, or the next reliably sunny day.
 
+<p align="center">
+  <a href="Documentation/Marketing/01-find-sunshine.png"><img src="Documentation/Marketing/01-find-sunshine.png" width="32%" alt="Find sunshine for your holiday with ranked destinations and sunny-hour forecasts"></a>
+  <a href="Documentation/Marketing/02-explore-map.png"><img src="Documentation/Marketing/02-explore-map.png" width="32%" alt="Explore sunshine on a map and open a destination forecast"></a>
+  <a href="Documentation/Marketing/03-nearby-and-country-search.png"><img src="Documentation/Marketing/03-nearby-and-country-search.png" width="32%" alt="Compare sunny places nearby or across countries"></a>
+</p>
+<p align="center">
+  <a href="Documentation/Marketing/04-sunshine-timeline.png"><img src="Documentation/Marketing/04-sunshine-timeline.png" width="32%" alt="See exactly when the sun is forecast to appear"></a>
+  <a href="Documentation/Marketing/05-travel-wishlists.png"><img src="Documentation/Marketing/05-travel-wishlists.png" width="32%" alt="Build travel wishlists and compare weekend sunshine"></a>
+  <a href="Documentation/Marketing/06-sunshine-widgets.png"><img src="Documentation/Marketing/06-sunshine-widgets.png" width="32%" alt="Track sunshine from Home Screen widgets"></a>
+</p>
+
 ## Why Weather Atlas?
 
 Conventional weather apps are good at answering “What will the weather be here?” Travel planning often starts with a different question: “Which of these places will be sunnier when I am free?”
 
 Weather Atlas makes that comparison the main experience. It turns hourly forecasts into clear sunny-hour timelines, ranks saved destinations, and shows nearby alternatives when somewhere else has a brighter forecast.
-
-## Highlights
-
-- **Sunshine-first forecasts** — see when sunshine occurs during the day, not only a daily condition or temperature range.
-- **Saved Places comparisons** — rank destinations for the selected day, compare the next weekend, or find each place's next mostly sunny day.
-- **Nearby sunnier places** — discover alternatives relative to the location whose forecast you are viewing.
-- **Map discovery** — search globally, inspect places on the map, and explore where the forecast is brighter.
-- **Detailed outlooks** — switch between daily and 10-day charts with temperature, feels-like temperature, cloud cover, rain chance, visibility, and UV information.
-- **Home or current location** — location permission is optional; a chosen home location can power the same experience.
-- **Widgets** — configurable Home Screen and Lock Screen views for current/home location or a saved place.
-- **Offline continuity** — forecasts are normally refreshed after 30 minutes and remain available from cache for up to 24 hours while offline.
-- **Localized interface** — English, German, Spanish, French, Italian, Japanese, Korean, Portuguese, Russian, Simplified Chinese, and Traditional Chinese.
-
-## Privacy
-
-Weather Atlas has no account system, advertising SDK, or application server. Saved places, preferences, and forecast caches stay on the device. Current-location access is optional and can be replaced with a manually selected home location.
-
-Forecast data comes from WeatherKit, while maps and Apple place information come from MapKit. Bundled place catalogs support worldwide search and nearby-place discovery without turning the app into a user-tracking service.
 
 ## Technology
 
@@ -48,23 +41,6 @@ Forecast data comes from WeatherKit, while maps and Apple place information come
 - [`SwiftTimeZoneLookup`](https://github.com/patrick-zippenfenig/SwiftTimeZoneLookup)
 
 The app targets **iOS 18 and later**. Newer visual features such as Liquid Glass are adopted when available, with native material-based presentation retained on iOS 18.
-
-## Running the project
-
-1. Clone the repository:
-
-   ```sh
-   git clone https://github.com/tomwuyutao/Weather-Atlas.git
-   cd Weather-Atlas
-   ```
-
-2. Open `Weather Atlas.xcodeproj` in Xcode.
-3. Select your Apple Developer team for both the **Weather Atlas** and **WeatherWidgets** targets.
-4. Replace the existing bundle identifiers and App Group with identifiers owned by your team.
-5. Enable **WeatherKit** and the same **App Groups** capability for both targets, then update their entitlements to match.
-6. Build and run on an iOS 18-or-later device or simulator.
-
-WeatherKit requires properly configured signing and entitlements. An unsigned build can compile successfully but cannot retrieve live forecasts.
 
 ## Project structure
 
