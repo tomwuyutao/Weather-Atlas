@@ -40,11 +40,6 @@ enum WeatherServiceError: LocalizedError {
 /// than blocking the main thread while the request is in flight.
 @MainActor
 final class WeatherService {
-  // MARK: - Resolution State
-
-  /// In-process place cache keyed by exact coordinates plus app locale.
-  var resolvedPlaces: [String: ResolvedPlace] = [:]
-
   // MARK: - WeatherKit
 
   /// Shared Apple WeatherKit client.
@@ -208,10 +203,9 @@ final class WeatherService {
     retriesOnFailure: Bool = true
   ) async throws -> CityWeather {
     do {
-      // Resolve a display-only city into coordinates/name metadata before
-      // requesting WeatherKit. WeatherKit itself ultimately uses location.
-      let place = await resolvedPlace(for: city)
-      guard let timeZone = place?.timeZone else {
+      // WeatherKit uses coordinates, while the bundled boundary database
+      // supplies a missing timezone without any reverse-geocoding request.
+      guard let place = resolvedPlace(for: city) else {
         reportDeveloperWarning(
           title: "Time Zone Missing",
           message:
@@ -219,12 +213,13 @@ final class WeatherService {
         )
         throw WeatherServiceError.undefinedTimeZone(city: city.displayName)
       }
+      let timeZone = place.timeZone
       let resolved = (
         city: City(
           id: city.id,
-          name: place?.name ?? "",
+          name: place.name ?? "",
           titleName: city.titleName,
-          country: place?.country ?? "",
+          country: place.country ?? "",
           countryISO2Code: city.countryISO2Code,
           latitude: city.latitude,
           longitude: city.longitude,

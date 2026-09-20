@@ -2,13 +2,12 @@
 //  WidgetLocation.swift
 //  WeatherWidgets
 //
-//  Purpose: Resolves device coordinates, localized place metadata, and a
-//  validated local time zone for current-location widget forecasts.
+//  Purpose: Resolves device coordinates and a validated local time zone for
+//  current-location widget forecasts without reverse geocoding.
 //
 
 @preconcurrency import CoreLocation
 import Foundation
-import MapKit
 import SwiftTimeZoneLookup
 
 // MARK: - Coordinate Time-Zone Resolution
@@ -46,228 +45,16 @@ actor WidgetTimeZoneResolver {
   }
 }
 
-// MARK: - Current-Location Metadata
-
-/// Optional reverse-geocoded fields for a fresh widget-owned coordinate.
-struct WidgetCurrentLocationMetadata: Sendable {
-  let cityName: String?
-  let timeZoneIdentifier: String?
-
-  init(cityName: String?, timeZoneIdentifier: String?) {
-    self.cityName = {
-      guard
-        let trimmed = cityName?.trimmingCharacters(
-          in: .whitespacesAndNewlines
-        ), !trimmed.isEmpty
-      else {
-        return nil
-      }
-      let separators = CharacterSet(charactersIn: ",，、;；")
-      guard let separator = trimmed.rangeOfCharacter(from: separators)
-      else {
-        return trimmed
-      }
-      let locality = String(trimmed[..<separator.lowerBound])
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      return locality.isEmpty ? nil : locality
-    }()
-    self.timeZoneIdentifier = {
-      guard
-        let identifier = timeZoneIdentifier?.trimmingCharacters(
-          in: .whitespacesAndNewlines
-        ), !identifier.isEmpty, TimeZone(identifier: identifier) != nil
-      else {
-        return nil
-      }
-      return identifier
-    }()
-  }
-
-  static let empty = WidgetCurrentLocationMetadata(
-    cityName: nil,
-    timeZoneIdentifier: nil
-  )
-
-}
-
-// MARK: - Bounded Reverse Geocoding
-
-/// Bounded Apple metadata chain owned by one provider callback. MapKit supplies
-/// the same canonical city component preferred by the app; Core Location fills
-/// any missing city or time-zone field. One timeout cancels the whole chain so a
-/// metadata outage cannot consume the widget's WeatherKit execution window.
-@MainActor
-final class WidgetCurrentLocationMetadataResolver {
-  private let geocoder = CLGeocoder()
-  private var continuation: CheckedContinuation<WidgetCurrentLocationMetadata?, Never>?
-  private var geocodeTask: Task<Void, Never>?
-  private var timeoutTask: Task<Void, Never>?
-  private var cancelMapKitRequest: (() -> Void)?
-
-  func resolve(
-    _ location: CLLocation,
-    locale: Locale,
-    timeout: Duration
-  ) async -> WidgetCurrentLocationMetadata? {
-    await withTaskCancellationHandler {
-      await withCheckedContinuation { continuation in
-        self.continuation = continuation
-        guard !Task.isCancelled else {
-          finish(with: nil)
-          return
-        }
-
-        geocodeTask = Task { @MainActor [weak self] in
-          guard let self else { return }
-          var metadata = WidgetCurrentLocationMetadata.empty
-
-          if #available(iOS 26.0, *) {
-            do {
-              metadata = try await mapKitMetadata(
-                for: location,
-                locale: locale
-              )
-            } catch {
-              // Core Location below remains an independent Apple
-              // source for this exact coordinate.
-            }
-          }
-
-          guard !Task.isCancelled else {
-            finish(with: nil)
-            return
-          }
-
-          // A partial MapKit result must not suppress a valid locality
-          // or time zone available from Core Location.
-          if metadata.cityName == nil
-            || metadata.timeZoneIdentifier == nil
-          {
-            do {
-              let coreMetadata = try await coreLocationMetadata(
-                for: location,
-                locale: locale
-              )
-              metadata = WidgetCurrentLocationMetadata(
-                cityName: metadata.cityName
-                  ?? coreMetadata.cityName,
-                timeZoneIdentifier: metadata.timeZoneIdentifier
-                  ?? coreMetadata.timeZoneIdentifier
-              )
-            } catch {
-              // Preserve any factual field MapKit already supplied.
-            }
-          }
-
-          guard !Task.isCancelled else {
-            finish(with: nil)
-            return
-          }
-          finish(
-            with: metadata.cityName != nil
-              || metadata.timeZoneIdentifier != nil
-              ? metadata
-              : nil
-          )
-        }
-
-        timeoutTask = Task { @MainActor [weak self] in
-          do {
-            try await Task.sleep(for: timeout)
-          } catch {
-            return
-          }
-          self?.finish(with: nil)
-        }
-      }
-    } onCancel: { [self] in
-      Task { @MainActor in
-        finish(with: nil)
-      }
-    }
-  }
-
-  private func finish(with metadata: WidgetCurrentLocationMetadata?) {
-    guard let continuation else { return }
-    self.continuation = nil
-    cancelMapKitRequest?()
-    cancelMapKitRequest = nil
-    geocoder.cancelGeocode()
-    geocodeTask?.cancel()
-    timeoutTask?.cancel()
-    geocodeTask = nil
-    timeoutTask = nil
-    continuation.resume(returning: metadata)
-  }
-
-  /// Uses only MapKit's city address component. A POI or street-level
-  /// `mapItem.name` is not a city and must never become the widget title.
-  @available(iOS 26.0, *)
-  private func mapKitMetadata(
-    for location: CLLocation,
-    locale: Locale
-  ) async throws -> WidgetCurrentLocationMetadata {
-    guard let request = MKReverseGeocodingRequest(location: location) else {
-      throw WidgetCurrentLocationMetadataError.requestUnavailable
-    }
-    request.preferredLocale = locale
-    cancelMapKitRequest = { request.cancel() }
-    defer { cancelMapKitRequest = nil }
-
-    guard let mapItem = try await request.mapItems.first else {
-      throw WidgetCurrentLocationMetadataError.noResult
-    }
-    let metadata = WidgetCurrentLocationMetadata(
-      cityName: mapItem.addressRepresentations?.cityName,
-      timeZoneIdentifier: mapItem.timeZone?.identifier
-    )
-    guard metadata.cityName != nil || metadata.timeZoneIdentifier != nil else {
-      throw WidgetCurrentLocationMetadataError.noResult
-    }
-    return metadata
-  }
-
-  /// Uses Core Location only as a fallback/fill source, retaining the app's
-  /// rule that administrative areas are not substitutes for a real locality.
-  private func coreLocationMetadata(
-    for location: CLLocation,
-    locale: Locale
-  ) async throws -> WidgetCurrentLocationMetadata {
-    guard
-      let placemark = try await geocoder.reverseGeocodeLocation(
-        location,
-        preferredLocale: locale
-      ).first
-    else {
-      throw WidgetCurrentLocationMetadataError.noResult
-    }
-    let metadata = WidgetCurrentLocationMetadata(
-      cityName: placemark.locality,
-      timeZoneIdentifier: placemark.timeZone?.identifier
-    )
-    guard metadata.cityName != nil || metadata.timeZoneIdentifier != nil else {
-      throw WidgetCurrentLocationMetadataError.noResult
-    }
-    return metadata
-  }
-}
-
-private enum WidgetCurrentLocationMetadataError: Error {
-  case requestUnavailable
-  case noResult
-}
-
 // MARK: - Current-Location Acquisition
 
 /// Device-location facts resolved entirely inside the widget extension.
 struct WidgetCurrentLocationContext: Sendable {
   let latitude: Double
   let longitude: Double
-  let cityName: String?
-  let timeZoneIdentifier: String?
+  let timeZoneIdentifier: String
 }
 
-/// Shares one location and metadata request across a WidgetKit family batch.
+/// Shares one coordinate-and-timezone request across a WidgetKit family batch.
 actor WidgetCurrentLocationRequestCoordinator {
   static let shared = WidgetCurrentLocationRequestCoordinator()
 
@@ -279,15 +66,11 @@ actor WidgetCurrentLocationRequestCoordinator {
   /// Actor-isolated coalescing boundary for concurrent WidgetKit requests.
   /// The retained coordinator state cannot be inlined into outside callers.
   func currentContext(
-    locationTimeout: Duration,
-    metadataTimeout: Duration,
-    locale: Locale
+    locationTimeout: Duration
   ) async throws -> WidgetCurrentLocationContext {
-    try await requests.value(for: locale.identifier) {
+    try await requests.value(for: "current-location") {
       try await WidgetCurrentLocationResolver.currentContext(
-        locationTimeout: locationTimeout,
-        metadataTimeout: metadataTimeout,
-        locale: locale
+        locationTimeout: locationTimeout
       )
     }
   }
@@ -299,8 +82,7 @@ enum WidgetCurrentLocationError: Error, Equatable, Sendable {
   case widgetUpdatesNotAuthorized
   /// Core Location completed without a usable coordinate.
   case locationUnavailable
-  /// Neither Apple metadata nor the bundled coordinate database could
-  /// identify the coordinate's time zone.
+  /// The bundled coordinate database could not identify the time zone.
   case timeZoneUnavailable
   /// Core Location did not complete within the widget's execution window.
   case timedOut
@@ -325,36 +107,28 @@ final class WidgetCurrentLocationResolver: NSObject, CLLocationManagerDelegate {
     manager.desiredAccuracy = kCLLocationAccuracyKilometer
   }
 
-  /// Resolves a fresh coordinate and, within a separate short deadline, the
-  /// city/time-zone facts needed to keep a travelling Current Location widget
-  /// truthful without reopening the containing app. Metadata failure is
-  /// nonfatal; callers can use a generic label and device timezone fallback.
+  /// Resolves a fresh coordinate and its timezone from bundled boundaries.
+  /// It never performs reverse geocoding or consumes the app's shared quota.
   static func currentContext(
-    locationTimeout: Duration = .seconds(5),
-    metadataTimeout: Duration = .seconds(3),
-    locale: Locale = .autoupdatingCurrent
+    locationTimeout: Duration = .seconds(5)
   ) async throws -> WidgetCurrentLocationContext {
     let resolver = WidgetCurrentLocationResolver()
     let location = try await resolver.requestCurrentLocation(
       timeout: locationTimeout
     )
     try Task.checkCancellation()
-    let metadata: WidgetCurrentLocationMetadata?
-    if metadataTimeout > .zero {
-      metadata = await WidgetCurrentLocationMetadataResolver().resolve(
-        location,
-        locale: locale,
-        timeout: metadataTimeout
-      )
-    } else {
-      metadata = nil
+    guard
+      let timeZoneIdentifier = await WidgetTimeZoneResolver.shared.timeZone(
+        latitude: location.coordinate.latitude,
+        longitude: location.coordinate.longitude
+      )?.identifier
+    else {
+      throw WidgetCurrentLocationError.timeZoneUnavailable
     }
-    try Task.checkCancellation()
     return WidgetCurrentLocationContext(
       latitude: location.coordinate.latitude,
       longitude: location.coordinate.longitude,
-      cityName: metadata?.cityName,
-      timeZoneIdentifier: metadata?.timeZoneIdentifier
+      timeZoneIdentifier: timeZoneIdentifier
     )
   }
 
@@ -456,30 +230,16 @@ final class WidgetCurrentLocationResolver: NSObject, CLLocationManagerDelegate {
   }
 }
 
-// MARK: - Provider Device-Location Adaptation
-
-/// Device-location identity resolved for the exact current coordinate.
-struct WidgetResolvedDeviceLocationCity {
-  let city: WidgetDataCity
-  /// True only when this request produced a nonempty locality in the app's
-  /// selected language.
-  let hasFreshResolvedCityName: Bool
-}
-
 extension SunnyHoursLockScreenProvider {
-  /// Updates the label and timezone after travel. If metadata briefly fails
-  /// without meaningful movement, the last published identity remains safe;
-  /// after a move, neutral copy and the local timezone database prevent the
-  /// new coordinate from being labelled as the former city.
+  /// Updates the coordinate and timezone after travel. Nearby refreshes retain
+  /// the published name; meaningful moves use neutral copy so a new coordinate
+  /// is never labelled as the former city.
   func resolvedDeviceLocationCity(
-    replacing publishedCity: WidgetDataCity,
-    languageIdentifier: String
-  ) async throws -> WidgetResolvedDeviceLocationCity {
+    replacing publishedCity: WidgetDataCity
+  ) async throws -> WidgetDataCity {
     let context = try await WidgetCurrentLocationRequestCoordinator.shared
       .currentContext(
-        locationTimeout: .seconds(5),
-        metadataTimeout: .seconds(3),
-        locale: Locale(identifier: languageIdentifier)
+        locationTimeout: .seconds(5)
       )
     let newLocation = CLLocation(
       latitude: context.latitude,
@@ -495,51 +255,17 @@ extension SunnyHoursLockScreenProvider {
         $0.distance(from: newLocation) > 2_000
       } ?? true
 
-    let resolvedName = context.cityName?.trimmingCharacters(
-      in: .whitespacesAndNewlines
-    )
-    let freshResolvedName = resolvedName.flatMap { $0.isEmpty ? nil : $0 }
     let cityName =
-      freshResolvedName
-      ?? (movedMeaningfully
-        ? widgetLocalizedString("Current Location")
-        : publishedCity.cityName)
-
-    let geocodedTimeZone = context.timeZoneIdentifier.flatMap {
-      TimeZone(identifier: $0)?.identifier
-    }
-    let coordinateTimeZone: String?
-    if geocodedTimeZone == nil {
-      coordinateTimeZone = await WidgetTimeZoneResolver.shared.timeZone(
-        latitude: context.latitude,
-        longitude: context.longitude
-      )?.identifier
-    } else {
-      coordinateTimeZone = nil
-    }
-    let retainedTimeZone =
       movedMeaningfully
-      ? nil
-      : publishedCity.timeZoneIdentifier.flatMap {
-        TimeZone(identifier: $0)?.identifier
-      }
-    guard
-      let timeZoneIdentifier = geocodedTimeZone
-        ?? coordinateTimeZone
-        ?? retainedTimeZone
-    else {
-      throw WidgetCurrentLocationError.timeZoneUnavailable
-    }
+        ? widgetLocalizedString("Current Location")
+        : publishedCity.cityName
 
-    return WidgetResolvedDeviceLocationCity(
-      city: WidgetDataCity(
-        id: WidgetDataStore.currentLocationIdentifier,
-        cityName: cityName,
-        timeZoneIdentifier: timeZoneIdentifier,
-        latitude: context.latitude,
-        longitude: context.longitude
-      ),
-      hasFreshResolvedCityName: freshResolvedName != nil
+    return WidgetDataCity(
+      id: WidgetDataStore.currentLocationIdentifier,
+      cityName: cityName,
+      timeZoneIdentifier: context.timeZoneIdentifier,
+      latitude: context.latitude,
+      longitude: context.longitude
     )
   }
 

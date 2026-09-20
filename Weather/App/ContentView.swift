@@ -142,6 +142,7 @@ struct ContentView: View {
         AppDelegate.updateHomeScreenShortcuts()
         model.publishWidgetCatalog(locale: locale)
         guard !model.locationProvider.isUsingHomeLocation,
+          !model.locationProvider.hasUsableCoordinate,
           ({ () -> Bool in
             switch model.locationProvider.manager.authorizationStatus {
             case .authorizedAlways, .authorizedWhenInUse: return true
@@ -153,7 +154,8 @@ struct ContentView: View {
           return
         }
         model.locationProvider.requestCurrentLocation(
-          preferredLocale: locale
+          preferredLocale: locale,
+          resolvePlaceMetadata: false
         )
       }
       .onChange(of: model.placesStore.document, initial: true) {
@@ -509,7 +511,8 @@ struct ContentView: View {
       }())
     {
       model.locationProvider.requestCurrentLocation(
-        preferredLocale: locale
+        preferredLocale: locale,
+        resolvePlaceMetadata: false
       )
     }
     Task {
@@ -896,7 +899,8 @@ struct ContentView: View {
       else { return }
       guard !model.locationProvider.isUsingHomeLocation else { return }
       model.locationProvider.requestCurrentLocation(
-        preferredLocale: locale
+        preferredLocale: locale,
+        resolvePlaceMetadata: false
       )
 
       for _ in 0..<40 where !model.locationProvider.hasUsableCoordinate {

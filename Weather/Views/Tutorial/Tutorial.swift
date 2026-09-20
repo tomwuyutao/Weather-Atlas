@@ -109,7 +109,8 @@ struct TutorialFlow: View {
           model.clearLocationState(keepingTransientCities: true)
           model.locationProvider.clearLocation()
           model.locationProvider.requestCurrentLocation(
-            preferredLocale: locale
+            preferredLocale: locale,
+            resolvePlaceMetadata: false
           )
         },
         chooseHomeLocation: {

@@ -389,8 +389,16 @@ struct CurrentLocationReportContent: View {
       savedPlace: savedPlace,
       locale: locale
     )
-    let locationName = placeNames.displayName
-    let detailTitle = placeNames.title
+    let currentLocationFallback = localizedString(
+      "Current Location",
+      locale: locale
+    )
+    let locationName = placeNames.displayName.isEmpty
+      ? currentLocationFallback
+      : placeNames.displayName
+    let detailTitle = placeNames.title.isEmpty
+      ? currentLocationFallback
+      : placeNames.title
     let selectedForecast = locationWeather?.forecastIfAvailable(
       on: selectedDate,
       selectionCalendar: calendar
@@ -546,44 +554,6 @@ struct CurrentLocationReportContent: View {
         )
       }
     }
-    .modifier(
-      MissingDataAlertReportingModifier(
-        report: {
-          guard locationName.isEmpty,
-            model.locationProvider.status == .readyWithoutMetadata
-          else {
-            return nil
-          }
-          let recoveryKey =
-            model.locationProvider.coordinate.map {
-              String(
-                format: "%.6f,%.6f",
-                $0.latitude,
-                $0.longitude
-              )
-            } ?? "unavailable"
-          return MissingDataAlertReport(
-            key: "your-location-metadata:\(recoveryKey)",
-            title: localizedString("Data Missing", locale: locale),
-            message: weatherDataIssueMessage(
-              .unresolvedPlace(),
-              cityName: localizedString("the current location", locale: locale),
-              locale: locale
-            )
-          )
-        }(),
-        recoveryKey: ({ () -> String in
-          let coordinateKey =
-            model.locationProvider.coordinate.map {
-              String(format: "%.6f,%.6f", $0.latitude, $0.longitude)
-            } ?? "unavailable"
-          return "location-metadata:\(coordinateKey)"
-        }()),
-        retry: {
-          await model.locationProvider.retryMetadataResolution()
-        }
-      )
-    )
     // A legacy current-location row can have been saved before the more
     // precise locality arrived. Repair only that exact transient UUID;
     // ordinary saved catalog cities are not candidates for this migration.

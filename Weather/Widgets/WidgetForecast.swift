@@ -149,12 +149,10 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
     let preservesResolvedCityName: Bool
     if resolvesDeviceLocation {
       do {
-        let resolved = try await resolvedDeviceLocationCity(
-          replacing: selectedCatalogCity,
-          languageIdentifier: capturedLanguageIdentifier
+        city = try await resolvedDeviceLocationCity(
+          replacing: selectedCatalogCity
         )
-        city = resolved.city
-        preservesResolvedCityName = resolved.hasFreshResolvedCityName
+        preservesResolvedCityName = false
         try Task.checkCancellation()
         guard
           selectionStillMatches(

@@ -180,6 +180,10 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
   @ObservationIgnored private var availabilityTask: Task<Void, Never>?
   /// Whether authorization was requested as part of a location action.
   @ObservationIgnored private var locateAfterAuthorization = false
+  /// Whether the active one-shot request should also resolve display metadata.
+  /// Launch and foreground refreshes need only coordinates; keeping those
+  /// requests coordinate-only preserves the geocoding budget for user actions.
+  @ObservationIgnored private var resolvesMetadataAfterLocation = true
   /// Locale requested by the app's currently selected language.
   @ObservationIgnored private var preferredLocale = Locale.autoupdatingCurrent
 
@@ -217,10 +221,12 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
   /// Starts the contextual authorization or one-shot location flow.
   func requestCurrentLocation(
-    preferredLocale: Locale = .autoupdatingCurrent
+    preferredLocale: Locale = .autoupdatingCurrent,
+    resolvePlaceMetadata: Bool = true
   ) {
     isUsingHomeLocation = false
     self.preferredLocale = preferredLocale
+    resolvesMetadataAfterLocation = resolvePlaceMetadata
     // A newer request supersedes pending availability/metadata work. This
     // prevents an old location from replacing a more recent user action.
     availabilityTask?.cancel()
@@ -340,10 +346,18 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
       return
     }
 
-    // Publish coordinate first. Reverse geocoding is supplementary work, so
-    // the app can already build WeatherKit requests while it is resolving.
+    // Publish the coordinate first so WeatherKit can start immediately.
     coordinate = location.coordinate
     metadata = nil
+
+    // Automatic launch and foreground refreshes deliberately stop here.
+    // A coordinate is sufficient for forecasts, and avoiding place-name work
+    // keeps Apple's reverse-geocoding quota available for direct user queries.
+    guard resolvesMetadataAfterLocation else {
+      status = .readyWithoutMetadata
+      return
+    }
+
     status = .resolvingPlace
     metadataTask?.cancel()
     metadataTask = Task { [weak self] in
@@ -359,9 +373,17 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     didFailWithError error: Error
   ) {
     guard !isUsingHomeLocation else { return }
-    if let locationError = error as? CLError,
-      locationError.code == .denied
-    {
+    if let locationError = error as? CLError {
+      // iOS 18 can finish a one-shot request by reporting `.locationUnknown`
+      // immediately after delivering a valid coordinate. That transient
+      // callback must not erase the successful result already on screen.
+      if locationError.code == .locationUnknown, hasUsableCoordinate {
+        return
+      }
+      guard locationError.code == .denied else {
+        clearPublishedLocation(status: .failed)
+        return
+      }
       switch manager.authorizationStatus {
       case .authorizedAlways, .authorizedWhenInUse, .notDetermined:
         status = coordinate == nil ? .idle : status
@@ -414,32 +436,8 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
   // MARK: - Reverse-Geocoded Display Metadata
 
-  /// Re-runs Apple's complete MapKit → Core Location metadata chain for the
-  /// current coordinate. This is deliberately separate from a new GPS lookup:
-  /// when only the locality/country/time-zone field is missing, the weather
-  /// request has already used the valid coordinate and does not need a second
-  /// unrelated forecast episode. Callers await this once before presenting a
-  /// metadata-missing alert.
-  func retryMetadataResolution() async {
-    guard let coordinate,
-      CLLocationCoordinate2DIsValid(coordinate)
-    else {
-      return
-    }
-    metadataTask?.cancel()
-    geocoder.cancelGeocode()
-    status = .resolvingPlace
-    await resolveMetadataOnce(
-      for: CLLocation(
-        latitude: coordinate.latitude,
-        longitude: coordinate.longitude
-      )
-    )
-  }
-
   /// Performs one full factual metadata pass. Keeping publication in this
-  /// awaited helper lets both the normal location callback and the mandatory
-  /// one-shot recovery share exactly the same blank-first behavior.
+  /// awaited helper keeps the delegate callback small and cancellation-safe.
   private func resolveMetadataOnce(for location: CLLocation) async {
     var resolvedMetadata = CurrentLocationMetadata.empty
     do {
